@@ -145,9 +145,14 @@ class DatasetTemplate(torch_data.Dataset):
         if data_dict.get('points', None) is not None:
             data_dict = self.point_feature_encoder.forward(data_dict)
 
+        if hasattr(self.data_processor,'grid_size'):
+            data_dict['grid_size'] = self.data_processor.grid_size
+
         data_dict = self.data_processor.forward(
             data_dict=data_dict
         )
+
+        
 
         if self.training and len(data_dict['gt_boxes']) == 0:
             new_index = np.random.randint(self.__len__())

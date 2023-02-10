@@ -21,7 +21,7 @@ class Detector3DTemplate(nn.Module):
         self.register_buffer('global_step', torch.LongTensor(1).zero_())
 
         self.module_topology = [
-            'vfe', 'backbone_3d', 'map_to_bev_module', 'pfe',
+            'vfe', 'map_to_bev_module', 'backbone_3d', 'pfe',
             'backbone_2d', 'dense_head',  'point_head', 'roi_head'
         ]
 
@@ -72,7 +72,7 @@ class Detector3DTemplate(nn.Module):
         backbone_3d_module = backbones_3d.__all__[self.model_cfg.BACKBONE_3D.NAME](
             model_cfg=self.model_cfg.BACKBONE_3D,
             num_class=self.num_class,                                 ####################
-            input_channels=model_info_dict['num_point_features'],
+            input_channels=model_info_dict['num_point_features'] if model_info_dict.get('num_bev_features', None) is None else (model_info_dict['num_bev_features'] + 3),
             grid_size=model_info_dict['grid_size'],
             voxel_size=model_info_dict['voxel_size'],
             point_cloud_range=model_info_dict['point_cloud_range']
@@ -89,7 +89,8 @@ class Detector3DTemplate(nn.Module):
 
         map_to_bev_module = map_to_bev.__all__[self.model_cfg.MAP_TO_BEV.NAME](
             model_cfg=self.model_cfg.MAP_TO_BEV,
-            grid_size=model_info_dict['grid_size']
+            grid_size=model_info_dict['grid_size'],
+            num_class=self.num_class, 
         )
         model_info_dict['module_list'].append(map_to_bev_module)
         model_info_dict['num_bev_features'] = map_to_bev_module.num_bev_features

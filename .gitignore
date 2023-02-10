@@ -4,6 +4,7 @@
 **dist**
 output/
 spconv/
+data/
 *.pyc
 venv/
 *.idea/
