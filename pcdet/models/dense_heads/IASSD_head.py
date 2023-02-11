@@ -281,11 +281,11 @@ class IASSD_Head(PointHeadTemplate):
         if target_cfg.get('INS_AWARE_ASSIGN', False):
             sa_ins_labels, sa_gt_box_of_fg_points, sa_xyz_coords, sa_gt_box_of_points, sa_box_idxs_labels = [],[],[],[],[]
             sa_ins_preds = input_dict['sa_ins_preds']
-            for i in range(1, len(sa_ins_preds)): # valid when i = 1,2 for IA-SSD
+            for i in range(0, len(sa_ins_preds)): # valid when i = 1,2 for IA-SSD
                 # if sa_ins_preds[i].__len__() == 0:
                 #     continue
                 sa_xyz = input_dict['encoder_coords'][i]
-                if i == 1:
+                if i <= 1:
                     extend_gt_boxes = box_utils.enlarge_box3d(
                         gt_boxes.view(-1, gt_boxes.shape[-1]), extra_width=[0.5, 0.5, 0.5]  #[0.2, 0.2, 0.2]
                     ).view(batch_size, -1, gt_boxes.shape[-1])             
@@ -600,7 +600,7 @@ class IASSD_Head(PointHeadTemplate):
             one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0)
             one_hot_targets = one_hot_targets[..., 1:]
 
-            if ('ctr' in self.model_cfg.LOSS_CONFIG.SAMPLE_METHOD_LIST[i+1][0]):
+            if ('ctr' in self.model_cfg.LOSS_CONFIG.SAMPLE_METHOD_LIST[i][0]) and i > 0:
                 centerness_mask = sa_centerness_mask[i]
                 one_hot_targets = one_hot_targets * centerness_mask.unsqueeze(-1).repeat(1, one_hot_targets.shape[1])
 

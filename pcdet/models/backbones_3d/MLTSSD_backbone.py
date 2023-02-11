@@ -128,8 +128,13 @@ class MLTSSD_Backbone(nn.Module):
         encoder_coords = [torch.cat([batch_idx.view(batch_size, -1, 1), xyz], dim=-1)]
 
         # li_cls_pred = None
-        li_cls_pred = batch_dict.get('li_cls_pred', None)
-        li_cls_pred = li_cls_pred.view(batch_size, -1, li_cls_pred.shape[-1]).contiguous() if li_cls_pred is not None else None
+        if batch_dict.get('li_cls_pred', None) is not None:
+            li_cls_pred = batch_dict['li_cls_pred']
+            li_cls_pred = li_cls_pred.view(batch_size, -1, li_cls_pred.shape[-1]).contiguous() 
+            li_cls_batch_idx = batch_idx.view(batch_size, -1)[:, :li_cls_pred.shape[1]]
+            sa_ins_preds.append(torch.cat([li_cls_batch_idx[..., None].float(),li_cls_pred.view(batch_size, -1, li_cls_pred.shape[-1])],dim =-1)) 
+        else:
+            li_cls_pred = None
 
 
         for i in range(len(self.SA_modules)):
@@ -150,7 +155,9 @@ class MLTSSD_Backbone(nn.Module):
             encoder_xyz.append(li_xyz)
             li_batch_idx = batch_idx.view(batch_size, -1)[:, :li_xyz.shape[1]]
             encoder_coords.append(torch.cat([li_batch_idx[..., None].float(),li_xyz.view(batch_size, -1, 3)],dim =-1))
-            encoder_features.append(li_features)            
+            encoder_features.append(li_features)        
+
+            # if i > 0:    
             if li_cls_pred is not None:
                 li_cls_batch_idx = batch_idx.view(batch_size, -1)[:, :li_cls_pred.shape[1]]
                 sa_ins_preds.append(torch.cat([li_cls_batch_idx[..., None].float(),li_cls_pred.view(batch_size, -1, li_cls_pred.shape[-1])],dim =-1)) 
