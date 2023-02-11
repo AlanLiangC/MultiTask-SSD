@@ -8,6 +8,7 @@ from tqdm import tqdm
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
 from ...utils import common_utils
 from ..dataset import DatasetTemplate
+from nuscenes.utils.data_io import load_bin_file
 
 
 class NuScenesDataset(DatasetTemplate):
@@ -93,19 +94,23 @@ class NuScenesDataset(DatasetTemplate):
         info = self.infos[index]
         lidar_path = self.root_path / info['lidar_path']
         points = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
+        lidar_seg_path = self.root_path / info['lidar_seg_path']
+        sem_labels = load_bin_file(lidar_seg_path)
 
-        sweep_points_list = [points]
-        sweep_times_list = [np.zeros((points.shape[0], 1))]
+        # sweep_points_list = [points]
+        # sweep_times_list = [np.zeros((points.shape[0], 1))]
 
-        for k in np.random.choice(len(info['sweeps']), max_sweeps - 1, replace=False):
-            points_sweep, times_sweep = self.get_sweep(info['sweeps'][k])
-            sweep_points_list.append(points_sweep)
-            sweep_times_list.append(times_sweep)
+        # for k in np.random.choice(len(info['sweeps']), max_sweeps - 1, replace=False):
+        #     points_sweep, times_sweep = self.get_sweep(info['sweeps'][k])
+        #     sweep_points_list.append(points_sweep)
+        #     sweep_times_list.append(times_sweep)
 
-        points = np.concatenate(sweep_points_list, axis=0)
-        times = np.concatenate(sweep_times_list, axis=0).astype(points.dtype)
+        # points = np.concatenate(sweep_points_list, axis=0)
+        # times = np.concatenate(sweep_times_list, axis=0).astype(points.dtype)
 
-        points = np.concatenate((points, times), axis=1)
+        # points = np.concatenate((points, times), axis=1)
+        if self.dataset_cfg.get('MLT', False):
+            return points, sem_labels
         return points
 
     def __len__(self):
@@ -135,7 +140,7 @@ class NuScenesDataset(DatasetTemplate):
 
             input_dict.update({
                 'gt_names': info['gt_names'] if mask is None else info['gt_names'][mask],
-                'gt_boxes': info['gt_boxes'] if mask is None else info['gt_boxes'][mask]
+                'gt_boxes': info['gt_boxes'][:,:-2] if mask is None else info['gt_boxes'][mask][:,:-2]
             })
 
         data_dict = self.prepare_data(data_dict=input_dict)
@@ -371,4 +376,4 @@ if __name__ == '__main__':
             root_path=ROOT_DIR / 'data' / 'nuscenes',
             logger=common_utils.create_logger(), training=True
         )
-        nuscenes_dataset.create_groundtruth_database(max_sweeps=dataset_cfg.MAX_SWEEPS)
+        # nuscenes_dataset.create_groundtruth_database(max_sweeps=dataset_cfg.MAX_SWEEPS)

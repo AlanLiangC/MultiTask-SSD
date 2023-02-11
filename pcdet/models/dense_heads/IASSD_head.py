@@ -449,8 +449,9 @@ class IASSD_Head(PointHeadTemplate):
         return point_loss, tb_dict
 
 
-    def get_contextual_vote_loss(self, tb_dict=None):        
-        pos_mask = self.forward_ret_dict['center_origin_cls_labels'] > 0
+    def get_contextual_vote_loss(self, tb_dict=None): 
+        center_origin_cls_labels = self.forward_ret_dict['center_origin_cls_labels']     
+        pos_mask = center_origin_cls_labels > 0
         center_origin_loss_box = []
         for i in self.forward_ret_dict['center_origin_cls_labels'].unique():
             if i <= 0: continue
@@ -462,8 +463,12 @@ class IASSD_Head(PointHeadTemplate):
             centers_pred = centers_pred[simple_pos_mask][:, 1:4]
             simple_center_origin_loss_box = F.smooth_l1_loss(centers_pred, center_box_labels)
             center_origin_loss_box.append(simple_center_origin_loss_box.unsqueeze(-1))
-        center_origin_loss_box = torch.cat(center_origin_loss_box, dim=-1).mean()
-        center_origin_loss_box = center_origin_loss_box * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS.get('vote_weight')
+
+        if len(center_origin_loss_box) > 0:
+            center_origin_loss_box = torch.cat(center_origin_loss_box, dim=-1).mean()
+            center_origin_loss_box = center_origin_loss_box * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS.get('vote_weight')
+        else:
+            center_origin_loss_box = pos_mask.new_zeros(1)
         if tb_dict is None:
             tb_dict = {}
         tb_dict.update({'center_origin_loss_reg': center_origin_loss_box.item()})
@@ -600,7 +605,7 @@ class IASSD_Head(PointHeadTemplate):
             one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0)
             one_hot_targets = one_hot_targets[..., 1:]
 
-            if ('ctr' in self.model_cfg.LOSS_CONFIG.SAMPLE_METHOD_LIST[i][0]) and i > 0:
+            if ('ctr' in self.model_cfg.LOSS_CONFIG.SAMPLE_METHOD_LIST[i][0]):
                 centerness_mask = sa_centerness_mask[i]
                 one_hot_targets = one_hot_targets * centerness_mask.unsqueeze(-1).repeat(1, one_hot_targets.shape[1])
 

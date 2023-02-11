@@ -349,6 +349,10 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
         if not test:
             annotations = [nusc.get('sample_annotation', token) for token in sample['anns']]
 
+            # lidarseg task
+            # lidarseg_token = nusc.get('sample', sample['token'])['data']['LIDAR_TOP']
+            lidarseg_bin_filename = nusc.get('lidarseg', ref_sd_token)['filename']
+
             # the filtering gives 0.5~1 map improvement
             num_lidar_pts = np.array([anno['num_lidar_pts'] for anno in annotations])
             num_radar_pts = np.array([anno['num_radar_pts'] for anno in annotations])
@@ -370,6 +374,7 @@ def fill_trainval_infos(data_path, nusc, train_scenes, val_scenes, test=False, m
             info['gt_boxes_token'] = tokens[mask]
             info['num_lidar_pts'] = num_lidar_pts[mask]
             info['num_radar_pts'] = num_radar_pts[mask]
+            info['lidar_seg_path'] = lidarseg_bin_filename
 
         if sample['scene_token'] in train_scenes:
             train_nusc_infos.append(info)
