@@ -145,7 +145,7 @@ class DatasetTemplate(torch_data.Dataset):
         if data_dict.get('points', None) is not None:
             data_dict = self.point_feature_encoder.forward(data_dict)
 
-        if hasattr(self.data_processor,'grid_size'):
+        if getattr(self.data_processor,'grid_size') is not None:
             data_dict['grid_size'] = self.data_processor.grid_size
 
         data_dict = self.data_processor.forward(
