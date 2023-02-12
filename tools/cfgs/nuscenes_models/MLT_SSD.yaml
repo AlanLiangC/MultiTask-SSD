@@ -30,8 +30,8 @@ DATA_CONFIG:
 
         -   NAME: sample_points
             NUM_POINTS: {
-                'train': 16384,
-                'test': 16384
+                'train': 30000,
+                'test': 30000
             }
 
         -   NAME: shuffle_points
@@ -60,14 +60,13 @@ MODEL:
         NAME: MLTSSD_encoding
         MLPS: [16]
         POINT_CLOUD_RANGE: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
-        BEV_SHAPE: [496,432]
 
      
     BACKBONE_3D:
         NAME: MLTSSD_Backbone
         SA_CONFIG:
             # Sampling setting:
-            NPOINT_LIST: [[4096], [1024], [512], [256], [-1], [256]]
+            NPOINT_LIST: [[8192], [1024], [512], [256], [-1], [256]]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
             SAMPLE_METHOD_LIST: &sample_method_list [['ctr_aware'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
             # Group and Abstraction setting:
@@ -92,7 +91,7 @@ MODEL:
             # SAVE_SAMPLE_LIST: True
 
     POINT_HEAD:
-        NAME: IASSD_Head
+        NAME: MLT_SSD_Head
         CLS_FC: [256, 256]
         REG_FC: [256, 256]
         CLASS_AGNOSTIC: False
@@ -130,7 +129,7 @@ MODEL:
             CENTERNESS_REGULARIZATION: True
             CENTERNESS_REGULARIZATION_SA: True
             LOSS_WEIGHTS: {
-                'ins_aware_weight': [0.2, 1.0, 1.0, 1.0],
+                'ins_aware_weight': [2.0, 1.0, 1.0, 1.0],
                 'vote_weight': 1.0,
                 'point_cls_weight': 1.0,
                 'point_box_weight': 1.0,
@@ -157,7 +156,7 @@ MODEL:
 
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 2
+    BATCH_SIZE_PER_GPU: 8
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle

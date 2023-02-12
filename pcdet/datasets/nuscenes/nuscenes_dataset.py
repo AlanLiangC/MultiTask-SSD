@@ -140,7 +140,7 @@ class NuScenesDataset(DatasetTemplate):
 
             input_dict.update({
                 'gt_names': info['gt_names'] if mask is None else info['gt_names'][mask],
-                'gt_boxes': info['gt_boxes'][:,:-2] if mask is None else info['gt_boxes'][mask][:,:-2]
+                'gt_boxes': info['gt_boxes'] if mask is None else info['gt_boxes'][mask]
             })
 
         data_dict = self.prepare_data(data_dict=input_dict)

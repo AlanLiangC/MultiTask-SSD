@@ -28,8 +28,8 @@ class MLTSSD_encoding(nn.Module):
 
         self.mlps.append(nn.Sequential(*self.shared_mlps))
         self.proj = Projection(pc_range = model_cfg.POINT_CLOUD_RANGE, bev_shape = bev_shape)
-        self.num_bev_features = self.mlp_list[-1]
-        self.encoder = U_Net(in_ch=self.num_bev_features, out_ch=self.num_bev_features)
+        self.num_bev_features = self.mlp_list[-1] * 2
+        self.encoder = U_Net(in_ch=self.mlp_list[-1], out_ch=self.mlp_list[-1])
 
         self.classifier = nn.Sequential(
             nn.Linear(self.num_bev_features,32),
@@ -40,6 +40,7 @@ class MLTSSD_encoding(nn.Module):
             nn.Dropout(0.2),
             nn.Linear(16,self.num_class)
         )
+
 
     def forward(self, batch_dict):
         batch_size = batch_dict['batch_size']
@@ -61,6 +62,7 @@ class MLTSSD_encoding(nn.Module):
         c_bev = pw_feature.shape[1]
         cmplt_pw_feature = output_bev.new_zeros([coord.shape[0], c_bev])
         cmplt_pw_feature[keep_bev] = pw_feature # Only change features in range
+        cmplt_pw_feature = torch.cat([cmplt_pw_feature, origin_pw_feature], dim = -1)
 
         batch_dict.update({
             'features': cmplt_pw_feature,

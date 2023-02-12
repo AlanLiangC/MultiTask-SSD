@@ -5,6 +5,7 @@ from .point_head_box import PointHeadBox
 from .point_head_simple import PointHeadSimple
 from .point_intra_part_head import PointIntraPartOffsetHead
 from .center_head import CenterHead
+from .MLT_SSD_head import MLT_SSD_Head
 from .IASSD_head import IASSD_Head
 
 __all__ = {
@@ -16,4 +17,5 @@ __all__ = {
     'AnchorHeadMulti': AnchorHeadMulti,
     'CenterHead': CenterHead,
     'IASSD_Head': IASSD_Head,
+    'MLT_SSD_Head': MLT_SSD_Head
 }

@@ -65,7 +65,7 @@ MODEL:
             # SAVE_SAMPLE_LIST: True
 
     POINT_HEAD:
-        NAME: IASSD_Head
+        NAME: MLT_SSD_Head
         CLS_FC: [256, 256]
         REG_FC: [256, 256]
         CLASS_AGNOSTIC: False
@@ -103,7 +103,7 @@ MODEL:
             CENTERNESS_REGULARIZATION: True
             CENTERNESS_REGULARIZATION_SA: True
             LOSS_WEIGHTS: {
-                'ins_aware_weight': [0.2, 1.0, 1.0, 1.0],
+                'ins_aware_weight': [2, 1.0, 1.0, 1.0],
                 'vote_weight': 1.0,
                 'point_cls_weight': 1.0,
                 'point_box_weight': 1.0,
