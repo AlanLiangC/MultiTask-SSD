@@ -72,7 +72,7 @@ class MLTSSD_encoding(nn.Module):
             batch_mask = coord[:,0] == batch_idx
             batch_points = batch_dict['points'][batch_mask]
             batch_features = cmplt_pw_feature[batch_mask]
-            if batch_points.shape[0] < self.npoint:
+            if batch_points.shape[0] <= self.npoint:
                 emb_points = batch_points.new_zeros([self.npoint, batch_points.shape[-1]])
                 emb_features = batch_points.new_zeros([self.npoint, batch_features.shape[-1]])
                 emb_points[:,0] = batch_idx
@@ -80,14 +80,14 @@ class MLTSSD_encoding(nn.Module):
                 emb_features[:batch_points.shape[0],:] = batch_features
                 new_points.append(emb_points)
                 new_features.append(emb_features)
+            else:
+                batch_sem_pred = li_sem_pred[batch_mask][:,1:]
+                cls_features_max, class_pred = batch_sem_pred.max(dim=-1)
+                score_pred = torch.sigmoid(cls_features_max) # B,N
+                score_picked, sample_idx = torch.topk(score_pred, self.npoint, dim=-1) 
 
-            batch_sem_pred = li_sem_pred[batch_mask][:,1:]
-            cls_features_max, class_pred = batch_sem_pred.max(dim=-1)
-            score_pred = torch.sigmoid(cls_features_max) # B,N
-            score_picked, sample_idx = torch.topk(score_pred, self.npoint, dim=-1) 
-
-            new_points.append(batch_points[sample_idx])
-            new_features.append(batch_features[sample_idx])
+                new_points.append(batch_points[sample_idx])
+                new_features.append(batch_features[sample_idx])
 
         points = torch.cat(new_points, dim = 0)
         new_features = torch.cat(new_features, dim = 0)

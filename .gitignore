@@ -10,6 +10,7 @@ venv/
 *.idea/
 *.vscode/
 *.so
+*.txt
 *.pkl
 *.zip
 *.bin
