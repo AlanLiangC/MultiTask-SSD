@@ -31,15 +31,15 @@ class MLTSSD_encoding(nn.Module):
         self.num_bev_features = self.mlp_list[-1] * 2
         self.encoder = U_Net(in_ch=self.mlp_list[-1], out_ch=self.mlp_list[-1])
 
-        self.classifier = nn.Sequential(
-            nn.Linear(self.num_bev_features,32),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(32,16),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(16,self.num_class)
-        )
+        # self.classifier = nn.Sequential(
+        #     nn.Linear(self.num_bev_features,32),
+        #     nn.ReLU(),
+        #     nn.Dropout(0.2),
+        #     nn.Linear(32,16),
+        #     nn.ReLU(),
+        #     nn.Dropout(0.2),
+        #     nn.Linear(16,self.num_class)
+        # )
 
 
     def forward(self, batch_dict):
