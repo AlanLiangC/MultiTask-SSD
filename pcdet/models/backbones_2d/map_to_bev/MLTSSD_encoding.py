@@ -69,9 +69,9 @@ class MLTSSD_encoding(nn.Module):
             'bev_features': output_bev
         })
 
-        li_cls_pred = self.classifier(cmplt_pw_feature)
+        # li_cls_pred = self.classifier(cmplt_pw_feature)
 
-        batch_dict['li_cls_pred'] = li_cls_pred
+        # batch_dict['li_cls_pred'] = li_cls_pred
 
         return batch_dict
 
