@@ -10,6 +10,75 @@ from ...utils import common_utils
 from ..dataset import DatasetTemplate
 from nuscenes.utils.data_io import load_bin_file
 
+_lidarseg_name2idx_mapping = {
+    'noise': 0,                                                  
+    'animal': 1,                                                 
+    'human.pedestrian.adult': 2,                                 
+    'human.pedestrian.child': 3,                                 
+    'human.pedestrian.construction_worker': 4,                   
+    'human.pedestrian.personal_mobility': 5,                     
+    'human.pedestrian.police_officer': 6,                        
+    'human.pedestrian.stroller': 7,                              
+    'human.pedestrian.wheelchair': 8,                            
+    'movable_object.barrier': 9,                                 
+    'movable_object.debris': 10,                                 
+    'movable_object.pushable_pullable': 11,
+    'movable_object.trafficcone': 12,
+    'static_object.bicycle_rack': 13,
+    'vehicle.bicycle': 14,
+    'vehicle.bus.bendy': 15,
+    'vehicle.bus.rigid': 16,
+    'vehicle.car': 17,
+    'vehicle.construction': 18,
+    'vehicle.emergency.ambulance': 19,
+    'vehicle.emergency.police': 20,
+    'vehicle.motorcycle': 21,
+    'vehicle.trailer': 22,
+    'vehicle.truck': 23,
+    'flat.driveable_surface': 24,
+    'flat.other': 25,
+    'flat.sidewalk': 26,
+    'flat.terrain': 27,
+    'static.manmade': 28,
+    'static.other': 29,
+    'static.vegetation': 30,
+    'vehicle.ego': 31
+    }
+
+SEMANTIC_CATEGORY_MAP = {
+    'animal':                               ('ignore', 0),
+    'human.pedestrian.personal_mobility':   ('ignore', 0),
+    'human.pedestrian.stroller':            ('ignore', 0),
+    'human.pedestrian.wheelchair':          ('ignore', 0),
+    'movable_object.debris':                ('ignore', 0),
+    'movable_object.pushable_pullable':     ('ignore', 0),
+    'static_object.bicycle_rack':           ('ignore', 0),
+    'vehicle.emergency.ambulance':          ('ignore', 0),
+    'vehicle.emergency.police':             ('ignore', 0),
+    'noise':                                ('ignore', 0),
+    'static.other':                         ('ignore', 0),
+    'vehicle.ego':                          ('ignore', 0),
+    'movable_object.barrier':               ('barrier', 1),
+    'vehicle.bicycle':                      ('bicycle', 2),
+    'vehicle.bus.bendy':                    ('bus', 3),
+    'vehicle.bus.rigid':                    ('bus', 3),
+    'vehicle.car':                          ('car', 4),	
+    'vehicle.construction':                 ('construction_vehicle', 5),	
+    'vehicle.motorcycle':                   ('motorcycle', 6),
+    'human.pedestrian.adult':               ('pedestrian', 7),
+    'human.pedestrian.child':               ('pedestrian', 7),
+    'human.pedestrian.construction_worker': ('pedestrian', 7),
+    'human.pedestrian.police_officer':      ('pedestrian', 7),
+    'movable_object.trafficcone':           ('traffic_cone',  8),
+    'vehicle.trailer':                      ('trailer', 9),
+    'vehicle.truck':                        ('truck', 10),
+    'flat.driveable_surface':               ('driveable_surface', 11),
+    'flat.other':                           ('other_flat', 12),
+    'flat.sidewalk':                        ('sidewalk', 13),
+    'flat.terrain':                         ('terrain', 14),
+    'static.manmade':                       ('manmade', 15),
+    'static.vegetation':                    ('vegetation', 16),
+}
 
 class NuScenesDataset(DatasetTemplate):
     def __init__(self, dataset_cfg, class_names, training=True, root_path=None, logger=None):
@@ -21,6 +90,10 @@ class NuScenesDataset(DatasetTemplate):
         self.include_nuscenes_data(self.mode)
         if self.training and self.dataset_cfg.get('BALANCED_RESAMPLING', False):
             self.infos = self.balanced_infos_resampling(self.infos)
+        _semantic_category_map = np.zeros([max(_lidarseg_name2idx_mapping.values()) + 1])
+        for k, v in _lidarseg_name2idx_mapping.items():
+            _semantic_category_map[v] = SEMANTIC_CATEGORY_MAP[k][1]
+        self.semantic_category_map = lambda name: _semantic_category_map[name]
 
     def include_nuscenes_data(self, mode):
         self.logger.info('Loading NuScenes dataset')
@@ -94,9 +167,7 @@ class NuScenesDataset(DatasetTemplate):
         info = self.infos[index]
         lidar_path = self.root_path / info['lidar_path']
         points = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
-        lidar_seg_path = self.root_path / info['lidar_seg_path']
-        sem_labels = load_bin_file(lidar_seg_path)
-
+        
         # sweep_points_list = [points]
         # sweep_times_list = [np.zeros((points.shape[0], 1))]
 
@@ -109,9 +180,14 @@ class NuScenesDataset(DatasetTemplate):
         # times = np.concatenate(sweep_times_list, axis=0).astype(points.dtype)
 
         # points = np.concatenate((points, times), axis=1)
-        if self.dataset_cfg.get('MLT', False):
-            return points, sem_labels
         return points
+
+    def get_sem_labels(self, index):
+        info = self.infos[index]
+        lidar_seg_path = self.root_path / info['lidar_seg_path']
+        sem_labels = load_bin_file(lidar_seg_path)
+        sem_labels = self.semantic_category_map(sem_labels)
+        return sem_labels
 
     def __len__(self):
         if self._merge_all_iters_to_one_epoch:
@@ -125,9 +201,11 @@ class NuScenesDataset(DatasetTemplate):
 
         info = copy.deepcopy(self.infos[index])
         points = self.get_lidar_with_sweeps(index, max_sweeps=self.dataset_cfg.MAX_SWEEPS)
+        sem_labels = self.get_sem_labels(index)
 
         input_dict = {
             'points': points,
+            'sem_labels': sem_labels,
             'frame_id': Path(info['lidar_path']).stem,
             'metadata': {'token': info['token']}
         }

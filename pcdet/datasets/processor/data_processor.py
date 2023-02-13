@@ -99,6 +99,10 @@ class DataProcessor(object):
             shuffle_idx = np.random.permutation(points.shape[0])
             points = points[shuffle_idx]
             data_dict['points'] = points
+            if data_dict.get('sem_labels', None) is not None:
+                sem_labels = data_dict['sem_labels']
+                sem_labels = sem_labels[shuffle_idx]
+                data_dict['sem_labels'] = sem_labels
 
         return data_dict
 

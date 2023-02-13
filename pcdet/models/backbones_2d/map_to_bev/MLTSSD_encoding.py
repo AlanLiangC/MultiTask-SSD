@@ -42,6 +42,12 @@ class MLTSSD_encoding(nn.Module):
             nn.Linear(16,self.num_class + 1)
         )
 
+ 
+    def cosine_similarity(self,x,y):
+        num = torch.matmul(x,y.T).squeeze()
+        denom = torch.norm(x, dim = -1) * torch.norm(y.squeeze())
+        return num / denom
+
 
     def forward(self, batch_dict):
         batch_size = batch_dict['batch_size']
@@ -81,13 +87,46 @@ class MLTSSD_encoding(nn.Module):
                 new_points.append(emb_points)
                 new_features.append(emb_features)
             else:
-                batch_sem_pred = li_sem_pred[batch_mask][:,1:]
-                cls_features_max, class_pred = batch_sem_pred.max(dim=-1)
-                score_pred = torch.sigmoid(cls_features_max) # B,N
-                score_picked, sample_idx = torch.topk(score_pred, self.npoint, dim=-1) 
+                batch_sem_pred = li_sem_pred[batch_mask]
+                # cls_features_max, class_pred = batch_sem_pred.max(dim=-1)
+                # score_pred = torch.sigmoid(cls_features_max) # B,N
+                # score_picked, sample_idx = torch.topk(score_pred, self.npoint, dim=-1) 
 
-                new_points.append(batch_points[sample_idx])
-                new_features.append(batch_features[sample_idx])
+                # new_points.append(batch_points[sample_idx])
+                # new_features.append(batch_features[sample_idx])
+
+                batch_sem_args = torch.argmax(li_sem_pred[batch_mask], dim = -1)
+                fg_tag = batch_sem_args > 0
+                if torch.sum(fg_tag) >= self.npoint:
+                    batch_points = batch_points[fg_tag]
+                    batch_features = batch_features[fg_tag]
+                    batch_sem_pred = batch_sem_pred[fg_tag][:,1:]
+                    cls_features_max, class_pred = batch_sem_pred.max(dim=-1)
+                    score_pred = torch.sigmoid(cls_features_max) # B,N
+                    _, sample_idx = torch.topk(score_pred, self.npoint, dim=-1) 
+                    new_points.append(batch_points[sample_idx])
+                    new_features.append(batch_features[sample_idx])
+                else:
+                    last_npoint = self.npoint - torch.sum(fg_tag)
+                    fg_points = batch_points[fg_tag]
+                    fp_features = batch_features[fg_tag]
+                    
+                    bg_points = batch_points[~fg_tag]
+                    bg_features = batch_features[~fg_tag]
+                    batch_bg_sem_pred = batch_sem_pred[~fg_tag]
+                    abs_bg = batch_points.new_zeros([1,self.num_class + 1])
+                    abs_bg[0,0] = 1
+                    abs_cos_features = self.cosine_similarity(torch.sigmoid(batch_bg_sem_pred), abs_bg)
+                    _, sample_idx = torch.topk(-abs_cos_features, last_npoint, dim=-1) 
+                    soft_bg_points = bg_points[sample_idx]
+                    soft_bg_features = bg_features[sample_idx]
+
+                    batch_points = torch.cat([fg_points, soft_bg_points], dim = 0)
+                    batch_features = torch.cat([fp_features, soft_bg_features], dim = 0)
+
+                    assert batch_points.shape[0] == self.npoint
+                    new_points.append(batch_points)
+                    new_features.append(batch_features)
 
         points = torch.cat(new_points, dim = 0)
         new_features = torch.cat(new_features, dim = 0)
