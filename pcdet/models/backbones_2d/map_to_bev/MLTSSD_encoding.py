@@ -17,6 +17,7 @@ class MLTSSD_encoding(nn.Module):
         bev_shape = grid_size[:2]
         input_channels = 4
         self.num_class = kwargs['num_class']
+        self.npoint = model_cfg.NPOINT
 
 
         for dim in self.mlp_list:
@@ -31,15 +32,15 @@ class MLTSSD_encoding(nn.Module):
         self.num_bev_features = self.mlp_list[-1] * 2
         self.encoder = U_Net(in_ch=self.mlp_list[-1], out_ch=self.mlp_list[-1])
 
-        # self.classifier = nn.Sequential(
-        #     nn.Linear(self.num_bev_features,32),
-        #     nn.ReLU(),
-        #     nn.Dropout(0.2),
-        #     nn.Linear(32,16),
-        #     nn.ReLU(),
-        #     nn.Dropout(0.2),
-        #     nn.Linear(16,self.num_class)
-        # )
+        self.classifier = nn.Sequential(
+            nn.Linear(self.num_bev_features,32),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(32,16),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(16,self.num_class + 1)
+        )
 
 
     def forward(self, batch_dict):
@@ -63,13 +64,40 @@ class MLTSSD_encoding(nn.Module):
         cmplt_pw_feature = output_bev.new_zeros([coord.shape[0], c_bev])
         cmplt_pw_feature[keep_bev] = pw_feature # Only change features in range
         cmplt_pw_feature = torch.cat([cmplt_pw_feature, origin_pw_feature], dim = -1)
+        li_sem_pred = self.classifier(cmplt_pw_feature)
+
+        new_points = []
+        new_features = []
+        for batch_idx in range(batch_size):
+            batch_mask = coord[:,0] == batch_idx
+            batch_points = batch_dict['points'][batch_mask]
+            batch_features = cmplt_pw_feature[batch_mask]
+            if batch_points.shape[0] < self.npoint:
+                emb_points = batch_points.new_zeros([self.npoint, batch_points.shape[-1]])
+                emb_features = batch_points.new_zeros([self.npoint, batch_features.shape[-1]])
+                emb_points[:,0] = batch_idx
+                emb_points[:batch_points.shape[0],:] = batch_points
+                emb_features[:batch_points.shape[0],:] = batch_features
+                new_points.append(emb_points)
+                new_features.append(emb_features)
+
+            batch_sem_pred = li_sem_pred[batch_mask][:,1:]
+            cls_features_max, class_pred = batch_sem_pred.max(dim=-1)
+            score_pred = torch.sigmoid(cls_features_max) # B,N
+            score_picked, sample_idx = torch.topk(score_pred, self.npoint, dim=-1) 
+
+            new_points.append(batch_points[sample_idx])
+            new_features.append(batch_features[sample_idx])
+
+        points = torch.cat(new_points, dim = 0)
+        new_features = torch.cat(new_features, dim = 0)
 
         batch_dict.update({
-            'features': cmplt_pw_feature,
-            'bev_features': output_bev
+            'features': new_features,
+            'points': points,
+            'sem_pred': li_sem_pred
         })
-
-        # li_cls_pred = self.classifier(cmplt_pw_feature)
+        
 
         # batch_dict['li_cls_pred'] = li_cls_pred
 

@@ -16,6 +16,9 @@ class MLT_SSD_Head(PointHeadTemplate):
         self.predict_boxes_when_training = predict_boxes_when_training
 
         target_cfg = self.model_cfg.TARGET_CONFIG
+        self.sem_criterion = loss_utils.CPGNetCriterion(
+                    weight='dynamic-log', ignore=None,classes='present', with_ls=True, with_tc=False
+                )
         self.box_coder = getattr(box_coder_utils, target_cfg.BOX_CODER)(
             **target_cfg.BOX_CODER_CONFIG
         )
@@ -402,6 +405,13 @@ class MLT_SSD_Head(PointHeadTemplate):
     def get_loss(self, tb_dict=None):
         tb_dict = {} if tb_dict is None else tb_dict
 
+        # sem loss
+        if hasattr(self,'SEM_TASK'):
+            if self.SEM_TASK:
+                sem_pred = self.forward_ret_dict['sem_pred']
+                sem_labels = self.forward_ret_dict['sem_labels']
+                sem_loss = self.sem_criterion(sem_pred,sem_labels)['loss'] * 0.4
+
         # vote loss
         if self.model_cfg.TARGET_CONFIG.get('ASSIGN_METHOD') is not None and \
             self.model_cfg.TARGET_CONFIG.ASSIGN_METHOD.get('ASSIGN_TYPE')== 'centers_origin':
@@ -444,8 +454,10 @@ class MLT_SSD_Head(PointHeadTemplate):
         if self.model_cfg.LOSS_CONFIG.get('IOU3D_REGULARIZATION', False):
             iou3d_loss, tb_dict_7 = self.get_iou3d_layer_loss()          
             tb_dict.update(tb_dict_7)
-        
+
         point_loss = center_loss_reg + center_loss_cls + center_loss_box + corner_loss + sa_loss_cls + iou3d_loss             
+        if self.SEM_TASK:
+            point_loss += sem_loss
         return point_loss, tb_dict
 
 
@@ -814,6 +826,20 @@ class MLT_SSD_Head(PointHeadTemplate):
                     'sa_ins_preds': batch_dict['sa_ins_preds'],
                     'box_iou3d_preds': box_iou3d_preds,
                     }
+        if batch_dict.get('sem_pred', None) is not None:
+            self.SEM_TASK = True
+            ret_dict.update({
+                'sem_pred': batch_dict['sem_pred'],
+            })
+            if batch_dict.get('fake_labels', None) is not None:
+                ret_dict.update({
+                'sem_labels': batch_dict['fake_labels']
+                })
+            else:
+                ret_dict.update({
+                'sem_labels': batch_dict['sem_labels']
+                })
+
         if self.training:
             targets_dict = self.assign_targets(batch_dict)
             ret_dict.update(targets_dict)

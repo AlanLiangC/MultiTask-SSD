@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
+import collections
 
 from . import box_utils
 
@@ -70,6 +72,133 @@ class SigmoidFocalClassificationLoss(nn.Module):
         assert weights.shape.__len__() == loss.shape.__len__()
 
         return loss * weights
+
+
+class LovaszSoftmaxLoss(nn.Module):
+    """
+    Param:
+        ignore: void class labels
+        classes: 'all' for all, 'present' for classes present in labels, or a list of classes to average.
+    """
+
+    def __init__(self, ignore=None, classes='present'):
+        super(LovaszSoftmaxLoss, self).__init__()
+        self.ignore = None
+        if ignore is not None:
+            self.ignore = [ignore] if not isinstance(ignore, collections.abc.Iterable) else list(ignore)
+        self.classes = classes
+
+    def _lovasz_grad(self, gt_sorted):
+        """ Computes gradient of the Lovasz extension w.r.t sorted errors
+        See Alg. 1 in paper
+        """
+        p = len(gt_sorted)
+        gts = gt_sorted.sum()
+        intersection = gts - gt_sorted.float().cumsum(0)
+        union = gts + (1 - gt_sorted).float().cumsum(0)
+        jaccard = 1. - intersection / union
+        if p > 1: # cover 1-pixel case
+            jaccard[1:p] = jaccard[1:p] - jaccard[0:-1]
+        return jaccard
+
+    def _lovasz_softmax_flat(self, logit, target):
+        """ Multi-class Lovasz-Softmax loss
+        
+        Param:
+            logit: [P, D] Variable, class probabilities at each prediction (between 0 and 1)
+            target: [P] Tensor, ground truth labels (between 0 and C - 1)
+            classes: 'all' for all, 'present' for classes present in labels, or a list of classes to average.
+        """
+        if logit.numel() == 0:
+            # only void points, the gradients should be 0
+            return logit * 0.
+
+        D = logit.shape[1]
+        losses = []
+        class_to_sum = list(range(D)) if self.classes in ['all', 'present'] else self.classes
+        for c in class_to_sum:
+            fg = (target == c).float() # foreground for class c
+            if (self.classes == 'present' and fg.sum() == 0):
+                continue
+            if D == 1:
+                if len(self.classes) > 1:
+                    raise ValueError('Sigmoid output possible only with 1 class')
+                class_pred = logit[:, 0]
+            else:
+                class_pred = logit[:, c]
+            errors = (Variable(fg) - class_pred).abs()
+            errors_sorted, perm = torch.sort(errors, 0, descending=True)
+            perm = perm.data
+            fg_sorted = fg[perm]
+            losses.append(torch.dot(errors_sorted, Variable(self._lovasz_grad(fg_sorted))))
+        return torch.stack(losses).mean()
+
+    def forward(self, predict, target):
+        """
+        Param:
+            predict: with shape :math:`(P, D)`, where P is points number, D is feature dimentions of points.
+            target: with shape :math:`(p, )`
+        """
+        if self.ignore is not None:
+            keep = target != self.ignore[0]
+            for i in range(1, len(self.ignore)):
+                keep = torch.logical_and(keep, target != self.ignore[i])
+
+            predict = predict[keep.nonzero().squeeze()]
+            target = target[keep]
+
+        logit = torch.softmax(predict, dim=-1)
+        loss = self._lovasz_softmax_flat(logit, target)
+        
+        return loss
+
+
+class CPGNetCriterion(nn.Module):
+    def __init__(self, weight, ignore=None, classes='present', with_ls=True, with_tc=False):
+        super(CPGNetCriterion, self).__init__()
+        self.weight = weight
+        self.ignore = ignore
+        self.with_ls = with_ls
+        self.with_tc = with_tc
+
+        if with_ls:
+            self.loss_ls = LovaszSoftmaxLoss(ignore=ignore, classes=classes)
+        if with_tc:
+            self.loss_tc = nn.L1Loss()
+
+    def _get_weight(self, n_cls, target, log=False, eps=0.001):
+        points_num = len(target)
+        category_cnt = target[:, None].eq(target.new_tensor(list(range(n_cls)))).sum(0)
+        if log:
+            frequency = torch.log(category_cnt + 1) / torch.log(category_cnt.new_tensor(points_num + 1))
+        else:
+            frequency = category_cnt / points_num
+        weight =  1 / (frequency + eps)
+        if self.ignore is not None:
+            weight[self.ignore] = 0
+        return weight
+        
+    def forward(self, predict, target, predict_raw=None):
+        if self.weight == 'dynamic':
+            weight = self._get_weight(predict.shape[-1], target)
+        elif self.weight == 'dynamic-log':
+            weight = self._get_weight(predict.shape[-1], target, log=True)
+        else:
+            weight = target.new_tensor(self.weight)
+            
+        loss_wce = F.cross_entropy(predict, target.long(), weight=weight)
+        loss_ls = self.loss_ls(predict, target) if self.with_ls else loss_wce.new_tensor(0)
+        loss_tc = self.loss_tc(predict, predict_raw) if self.with_tc else loss_wce.new_tensor(0)
+        loss = loss_wce + 2 * loss_ls + loss_tc
+
+        return {
+            'loss_wce': loss_wce,
+            'loss_ls': loss_ls,
+            'loss_tc': loss_tc,
+            'loss': loss
+        }
+
+
 
 
 class WeightedClassificationLoss(nn.Module):

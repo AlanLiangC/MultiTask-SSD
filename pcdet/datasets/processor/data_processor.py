@@ -111,6 +111,25 @@ class DataProcessor(object):
             return partial(self.transform_points_to_voxels_placeholder, config=config)
         
         return data_dict
+
+    def add_fake_sem_label(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.add_fake_sem_label, config=config)
+
+        points = data_dict['points']
+        gt_boxes = data_dict['gt_boxes']
+        fake_lebels = np.zeros(points.shape[0])
+        box_idxs_of_pts = box_utils.roiaware_pool3d_utils.points_in_boxes_cpu(
+                points[:,:3], gt_boxes[:, 0:7])
+        box_mask = np.sum(box_idxs_of_pts, axis=0) > 0
+        box_idx = np.zeros(box_mask.shape[0]) - 1
+        box_idx[box_mask] = np.argmax(box_idxs_of_pts, axis=0)[box_mask]
+
+        fake_lebels[box_mask] = gt_boxes[box_idx[box_mask].astype(np.int32), -1]
+
+        data_dict['fake_labels'] = fake_lebels.astype(np.int32)
+        return data_dict
+        
         
     def transform_points_to_voxels(self, data_dict=None, config=None):
         if data_dict is None:

@@ -28,17 +28,25 @@ DATA_CONFIG:
         -   NAME: mask_points_and_boxes_outside_range
             REMOVE_OUTSIDE_BOXES: True
 
-        -   NAME: sample_points
-            NUM_POINTS: {
-                'train': 30000,
-                'test': 30000
-            }
-
         -   NAME: shuffle_points
             SHUFFLE_ENABLED: {
                 'train': True,
                 'test': False
             }
+
+        # -   NAME: sample_points_by_voxels  # after the shuffle_points
+        #     SAMPLE_TYPE: 'raw'    # 'mean_vfe', 'raw' (default)
+        #     VOXEL_SIZE: [0.064, 0.064, 0.2]
+        #     MAX_POINTS_PER_VOXEL: 5            
+        #     MAX_NUMBER_OF_VOXELS: {
+        #         'train': 80000,
+        #         'test': 90000
+        #         }
+        #     NUM_POINTS: {
+        #         'train': 28672,
+        #         'test': 28672
+        #         }
+
         - NAME: transform_points_to_voxels
           VOXEL_SIZE: [0.2, 0.2, 8]
           MAX_POINTS_PER_VOXEL: 32
@@ -59,6 +67,7 @@ MODEL:
     MAP_TO_BEV:
         NAME: MLTSSD_encoding
         MLPS: [16]
+        NPOINT: 16384
         POINT_CLOUD_RANGE: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 
      
@@ -66,9 +75,9 @@ MODEL:
         NAME: MLTSSD_Backbone
         SA_CONFIG:
             # Sampling setting:
-            NPOINT_LIST: [[8192], [1024], [512], [256], [-1], [256]]
+            NPOINT_LIST: [[16384], [4096], [2048], [1024], [-1], [1024]]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
-            SAMPLE_METHOD_LIST: &sample_method_list [['ctr_aware'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
+            SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
             # Group and Abstraction setting:
             RADIUS_LIST: [[0.2,0.8], [0.8,1.6], [1.6,4.8], [], [], [4.8, 6.4]]
             NSAMPLE_LIST: [[16,32], [16,32], [16,32], [], [], [16, 32]]            
