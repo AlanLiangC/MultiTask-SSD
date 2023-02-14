@@ -94,6 +94,7 @@ class Detector3DTemplate(nn.Module):
         )
         model_info_dict['module_list'].append(map_to_bev_module)
         model_info_dict['num_bev_features'] = map_to_bev_module.num_bev_features
+        model_info_dict['grid_size'] = map_to_bev_module.grid_size
         return map_to_bev_module, model_info_dict
 
     def build_backbone_2d(self, model_info_dict):

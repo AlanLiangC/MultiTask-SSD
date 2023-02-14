@@ -155,10 +155,10 @@ class Projection:
 
         grid_coord_flatten = n * (h_grid * w_grid) + v_floor * w_grid + u_floor
 
-        grid_map, _ = scatter_max(points, grid_coord_flatten, 0, None, None)  # P_reduce * D 
-        grid_map = torch.cat([grid_map, grid_map.new_zeros([batch_size * h_grid * w_grid - grid_map.shape[0], feature_dim])])
+        grid_map, _ = scatter_max(points, grid_coord_flatten.long(), 0, None, None)  # P_reduce * D 
+        grid_map = torch.cat([grid_map, grid_map.new_zeros([int(batch_size * h_grid * w_grid - grid_map.shape[0]), feature_dim])])
 
-        return grid_map.view(batch_size, h_grid, w_grid, feature_dim).permute(0, 3, 1, 2).contiguous()
+        return grid_map.view(batch_size, int(h_grid), int(w_grid), feature_dim).permute(0, 3, 1, 2).contiguous()
 
     def _gather(self, grid_map, grid_coord, grid_shape):
         """

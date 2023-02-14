@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import collections
+from ..ops.iou3d_nms.iou3d_nms_utils import boxes_iou3d_gpu
 
 from . import box_utils
 
@@ -198,6 +199,30 @@ class CPGNetCriterion(nn.Module):
             'loss': loss
         }
 
+
+class IouLoss(nn.Module):
+  '''IouLoss loss for an output tensor
+    Arguments:
+      output (batch x dim x h x w)
+      mask (batch x max_objects)
+      ind (batch x max_objects)
+      target (batch x max_objects x dim)
+  '''
+
+  def __init__(self):
+    super(IouLoss, self).__init__()
+
+  def forward(self, iou_pred, mask, ind, box_pred, box_gt):
+    if mask.sum() == 0:
+        return torch.tensor(0.0).to(iou_pred.device)
+    mask = mask.bool()
+    pred = _transpose_and_gather_feat(iou_pred, ind)[mask].view(-1)
+    pred_box = _transpose_and_gather_feat(box_pred, ind)
+    target = boxes_iou3d_gpu(pred_box[mask], box_gt[mask]).diag()
+    target = 2 * target - 1
+    loss = F.l1_loss(pred, target, reduction='sum')
+    loss = loss / (mask.sum() + 1e-4)
+    return loss
 
 
 

@@ -214,3 +214,33 @@ def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
             'pred_labels': cur_labels
         })
     return ret_pred_dicts
+
+def generate_dense_boxes(pred_dict, feature_map_stride, voxel_size, point_cloud_range):
+    """
+    Generate boxes for single sample pixel-wise
+    Input pred_dict:
+        center      (B, 2, H, W)
+        center_z    (B, 1, H, W)
+        dim         (B, 3, H, W)
+        cos/sin     (B, 1, H, W)
+    Return:
+        (B, 7, H, W)
+    """
+    batch_offset = pred_dict['center']
+    batch_z = pred_dict['center_z']
+    batch_dim = torch.clamp(pred_dict['dim'], min=-3, max=3).exp()  # avoid large gradient
+    batch_rot_cos = pred_dict['rot'][:, 0].unsqueeze(dim=1)
+    batch_rot_sin = pred_dict['rot'][:, 1].unsqueeze(dim=1)
+    batch_rot = torch.atan2(batch_rot_sin, batch_rot_cos)
+
+    B, _, H, W = batch_dim.size()
+    ys, xs = torch.meshgrid([torch.arange(0, H), torch.arange(0, W)])
+    ys = ys.view(1, 1, H, W).repeat(B, 1, 1, 1).to(batch_dim)
+    xs = xs.view(1, 1, H, W).repeat(B, 1, 1, 1).to(batch_dim)
+    xs = xs + batch_offset[:, 0:1]    # (B, 1, H, W)
+    ys = ys + batch_offset[:, 1:2]
+    xs = xs * feature_map_stride * voxel_size[0] + point_cloud_range[0]
+    ys = ys * feature_map_stride * voxel_size[1] + point_cloud_range[1]
+
+    pred_boxes = torch.cat((xs, ys, batch_z, batch_dim, batch_rot), dim=1)
+    return pred_boxes

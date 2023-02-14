@@ -90,10 +90,10 @@ class NuScenesDataset(DatasetTemplate):
         self.include_nuscenes_data(self.mode)
         if self.training and self.dataset_cfg.get('BALANCED_RESAMPLING', False):
             self.infos = self.balanced_infos_resampling(self.infos)
-        _semantic_category_map = np.zeros([max(_lidarseg_name2idx_mapping.values()) + 1])
+        self._semantic_category_map = np.zeros([max(_lidarseg_name2idx_mapping.values()) + 1])
         for k, v in _lidarseg_name2idx_mapping.items():
-            _semantic_category_map[v] = SEMANTIC_CATEGORY_MAP[k][1]
-        self.semantic_category_map = lambda name: _semantic_category_map[name]
+            self._semantic_category_map[v] = SEMANTIC_CATEGORY_MAP[k][1]
+        # self.semantic_category_map = lambda name: _semantic_category_map[name]
 
     def include_nuscenes_data(self, mode):
         self.logger.info('Loading NuScenes dataset')
@@ -185,8 +185,8 @@ class NuScenesDataset(DatasetTemplate):
     def get_sem_labels(self, index):
         info = self.infos[index]
         lidar_seg_path = self.root_path / info['lidar_seg_path']
-        sem_labels = load_bin_file(lidar_seg_path)
-        sem_labels = self.semantic_category_map(sem_labels)
+        sem_labels = np.fromfile(lidar_seg_path, dtype=np.uint8)
+        sem_labels = self._semantic_category_map[sem_labels]
         return sem_labels
 
     def __len__(self):

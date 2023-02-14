@@ -10,6 +10,7 @@ from .voxel_rcnn import VoxelRCNN
 from .centerpoint import CenterPoint
 from .pv_rcnn_plusplus import PVRCNNPlusPlus
 from .IASSD import IASSD
+from .PAGNet import PAGNet
 
 __all__ = {
     'Detector3DTemplate': Detector3DTemplate,
@@ -24,6 +25,7 @@ __all__ = {
     'CenterPoint': CenterPoint,
     'PVRCNNPlusPlus': PVRCNNPlusPlus,
     'IASSD': IASSD,
+    'PAGNet': PAGNet
 }
 
 

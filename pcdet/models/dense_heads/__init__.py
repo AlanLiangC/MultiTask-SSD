@@ -7,6 +7,7 @@ from .point_intra_part_head import PointIntraPartOffsetHead
 from .center_head import CenterHead
 from .MLT_SSD_head import MLT_SSD_Head
 from .IASSD_head import IASSD_Head
+from .center_head_iou import CenterHeadIoU
 
 __all__ = {
     'AnchorHeadTemplate': AnchorHeadTemplate,
@@ -17,5 +18,6 @@ __all__ = {
     'AnchorHeadMulti': AnchorHeadMulti,
     'CenterHead': CenterHead,
     'IASSD_Head': IASSD_Head,
-    'MLT_SSD_Head': MLT_SSD_Head
+    'MLT_SSD_Head': MLT_SSD_Head,
+    'CenterHeadIoU': CenterHeadIoU
 }

@@ -28,8 +28,43 @@ class Classifier(nn.Module):
         assert input_features.shape[-1] == self.input_channels
         return self.classifier(input_features)
 
+class BasicBlock(nn.Module):
+    expansion = 1
 
-class MLTSSD_encoding(nn.Module):
+    def __init__(self, inplanes, planes, outplanes, stride=1, norm_fn=nn.BatchNorm2d, downsample=None):
+        super(BasicBlock, self).__init__()
+
+        assert norm_fn is not None
+        bias = norm_fn is not None
+        self.conv1 = nn.Conv2d(inplanes, planes, 3, stride=stride, padding=1, bias=bias)
+        self.bn1 = norm_fn(planes)
+        self.relu = nn.ReLU()
+        self.conv2 = nn.Conv2d(planes, inplanes, 3, stride=stride, padding=1, bias=bias)
+        self.bn2 = norm_fn(inplanes)
+        self.conv3 = nn.Conv2d(inplanes, outplanes, 3, stride=stride, padding=1, bias=bias)
+        self.bn3 = norm_fn(outplanes)
+        self.downsample = downsample
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out = out + identity
+        out = self.relu(out)
+
+        return self.relu(self.bn3(self.conv3(out)))
+
+
+class PAGNet_encoding(nn.Module):
     def __init__(self, model_cfg, grid_size, **kwargs):
         super().__init__()
         self.model_cfg = model_cfg
@@ -61,6 +96,13 @@ class MLTSSD_encoding(nn.Module):
         self.encoder = U_Net(in_ch=self.mlp_list[-1], out_ch=self.mlp_list[-1])
 
         self.classifier = Classifier(input_channels=self.num_bev_features, layers=model_cfg.CLASSIFIER, sem_class=self.sem_num_class)
+        self.sample_feature_ln = BasicBlock(inplanes=self.mlp_list[-1]*3, planes=self.mlp_list[-1]*2, outplanes=self.mlp_list[-1]*2)
+
+        # self.norm_feature_layers = nn.Sequential(
+        #     nn.Conv2d(self.mlp_list[-1]*3, self.mlp_list[-1]*2, 3, stride=1, padding=1, bias=False),
+        #     nn.BatchNorm2d(),
+        #     nn.ReLU()
+        # )
 
  
     def cosine_similarity(self,x,y):
@@ -134,10 +176,8 @@ class MLTSSD_encoding(nn.Module):
                     bg_points = batch_points[~fg_tag]
                     bg_features = batch_features[~fg_tag]
                     batch_bg_sem_pred = batch_sem_pred[~fg_tag]
-                    if batch_dict['gt_box'].shape[-1] < 9: # kitti
-                        abs_bg = batch_points.new_zeros([1,self.sem_num_class + 1])
-                    else:
-                        abs_bg = batch_points.new_zeros([1,self.sem_num_class])
+
+                    abs_bg = batch_points.new_zeros([1,self.sem_num_class])
                     abs_bg[0,0] = 1
                     abs_cos_features = self.cosine_similarity(torch.sigmoid(batch_bg_sem_pred), abs_bg)
                     _, sample_idx = torch.topk(-abs_cos_features, last_npoint, dim=-1) 
@@ -162,6 +202,21 @@ class MLTSSD_encoding(nn.Module):
             'sem_pred': li_sem_pred,
             # 'vs_points': vs_points
         })
+
+        new_coord = points[:,:4]
+        new_keep_bev = self.proj.init_bev_coord(new_coord)[1]
+        new_bev_feature = self.proj.p2g_bev(new_features[new_keep_bev], batch_size)
+
+
+        spatial_features_2d = torch.cat([output_bev, new_bev_feature], dim = 1)
+        spatial_features_2d = self.sample_feature_ln(spatial_features_2d)
+
+        batch_dict.update({
+            'grid_size': self.grid_size,
+            'spatial_features_2d': spatial_features_2d
+        })
+
+        
         
 
         # batch_dict['li_cls_pred'] = li_cls_pred

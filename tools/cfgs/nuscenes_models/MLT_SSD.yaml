@@ -47,13 +47,13 @@ DATA_CONFIG:
         #         'test': 28672
         #         }
 
-        - NAME: transform_points_to_voxels
-          VOXEL_SIZE: [0.2, 0.2, 8]
-          MAX_POINTS_PER_VOXEL: 32
-          MAX_NUMBER_OF_VOXELS: {
-            'train': 30000,
-            'test': 30000
-          }
+        # - NAME: transform_points_to_voxels
+        #   VOXEL_SIZE: [0.2, 0.2, 8]
+        #   MAX_POINTS_PER_VOXEL: 32
+        #   MAX_NUMBER_OF_VOXELS: {
+        #     'train': 30000,
+        #     'test': 30000
+        #   }
 
     POINT_FEATURE_ENCODING: {
         encoding_type: absolute_coordinates_encoding,
@@ -68,6 +68,9 @@ MODEL:
         NAME: MLTSSD_encoding
         MLPS: [16]
         NPOINT: 16384
+        SEM_CLASS_NUM: 17
+        CLASSIFIER: [64,32]
+        VOXEL_SIZE: [0.2, 0.2, 8]
         POINT_CLOUD_RANGE: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 
      
@@ -75,7 +78,7 @@ MODEL:
         NAME: MLTSSD_Backbone
         SA_CONFIG:
             # Sampling setting:
-            NPOINT_LIST: [[16384], [4096], [2048], [1024], [-1], [1024]]
+            NPOINT_LIST: [[8192], [2048], [1024], [512], [-1], [512]]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
             SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
             # Group and Abstraction setting:

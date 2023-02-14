@@ -3,22 +3,65 @@ import torch.nn as nn
 
 from ...ops.pointnet2.pointnet2_batch import pointnet2_modules
 import os
+from ..backbones_2d.map_to_bev.projection import Projection
 
-class IASSD_Backbone(nn.Module):
-    """ Backbone for IA-SSD"""
+
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, inplanes, planes, outplanes, stride=1, norm_fn=nn.BatchNorm2d, downsample=None):
+        super(BasicBlock, self).__init__()
+
+        assert norm_fn is not None
+        bias = norm_fn is not None
+        self.conv1 = nn.Conv2d(inplanes, planes, 3, stride=1, padding=1, bias=bias)
+        self.bn1 = norm_fn(planes)
+        self.relu = nn.ReLU()
+        self.conv2 = nn.Conv2d(planes, inplanes, 3, stride=1, padding=1, bias=bias)
+        self.bn2 = norm_fn(inplanes)
+        self.conv3 = nn.Conv2d(inplanes, outplanes, 3, stride=stride, padding=1, bias=bias)
+        self.bn3 = norm_fn(outplanes)
+        self.downsample = downsample
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out = out + identity
+        out = self.relu(out)
+
+        return self.relu(self.bn3(self.conv3(out)))
+
+
+class PAGNet_Backbone(nn.Module):
+    """ Backbone for PAGNet"""
 
     def __init__(self, model_cfg, num_class, input_channels, **kwargs):
         super().__init__()
         self.model_cfg = model_cfg
         self.num_class = num_class
+        self.grid_size = kwargs['grid_size'][:2]
 
         self.SA_modules = nn.ModuleList()
         channel_in = input_channels - 3
         channel_out_list = [channel_in]
 
         self.num_points_each_layer = []
+        self.projs = []
+        self.multi_bevs = nn.ModuleList()
 
         sa_config = self.model_cfg.SA_CONFIG
+        self.bev_shape = sa_config.BEV_SHAPE
+        self.multi_bevs_list = sa_config.MULTI_BEVS
         self.layer_types = sa_config.LAYER_TYPE
         self.ctr_idx_list = sa_config.CTR_INDEX
         self.layer_inputs = sa_config.LAYER_INPUT
@@ -81,6 +124,14 @@ class IASSD_Backbone(nn.Module):
 
             channel_out_list.append(channel_out)
 
+            self.projs.append(Projection(pc_range=model_cfg.POINT_CLOUD_RANGE, bev_shape=self.grid_size / self.bev_shape[k]))
+
+            bev_layer_list = self.multi_bevs_list[k]
+            self.multi_bevs.append(
+                BasicBlock(inplanes=bev_layer_list[0], planes=bev_layer_list[1], outplanes=bev_layer_list[2], stride=bev_layer_list[-1])
+            )
+
+
         self.num_point_features = channel_out
 
 
@@ -112,16 +163,11 @@ class IASSD_Backbone(nn.Module):
             batch_size:     2
         '''
         batch_size = batch_dict['batch_size']
+        spatial_features_2d = batch_dict['spatial_features_2d']
         points = batch_dict['points']
-        batch_idx, xyz, features = self.break_up_pc(points)
-        
-        # vs_points = []
-        # batch_mask = batch_dict['ori_points'][:,0] == 0
-        # ori_points = batch_dict['ori_points'][:,1:4][batch_mask]
-        # fake_labels = batch_dict['fake_labels'][batch_mask]
-        # vs_points.append(torch.cat([ori_points,fake_labels.view(-1,1)], dim = -1))
-        # vs_points.append(xyz[batch_idx == 0])
-
+        batch_idx, xyz, _ = self.break_up_pc(points)
+        features = batch_dict['features']
+        # vs_points = batch_dict['vs_points']
 
         xyz_batch_cnt = xyz.new_zeros(batch_size).int()
         for bs_idx in range(batch_size):
@@ -134,7 +180,16 @@ class IASSD_Backbone(nn.Module):
         encoder_xyz, encoder_features, sa_ins_preds = [xyz], [features], []
         encoder_coords = [torch.cat([batch_idx.view(batch_size, -1, 1), xyz], dim=-1)]
 
-        li_cls_pred = None
+        # li_cls_pred = None
+        if batch_dict.get('li_cls_pred', None) is not None:
+            li_cls_pred = batch_dict['li_cls_pred']
+            li_cls_pred = li_cls_pred.view(batch_size, -1, li_cls_pred.shape[-1]).contiguous() 
+            li_cls_batch_idx = batch_idx.view(batch_size, -1)[:, :li_cls_pred.shape[1]]
+            sa_ins_preds.append(torch.cat([li_cls_batch_idx[..., None].float(),li_cls_pred.view(batch_size, -1, li_cls_pred.shape[-1])],dim =-1)) 
+        else:
+            li_cls_pred = None
+
+
         for i in range(len(self.SA_modules)):
             xyz_input = encoder_xyz[self.layer_inputs[i]]
             feature_input = encoder_features[self.layer_inputs[i]]
@@ -151,33 +206,34 @@ class IASSD_Backbone(nn.Module):
                 encoder_coords.append(torch.cat([center_origin_batch_idx[..., None].float(),centers_origin.view(batch_size, -1, 3)],dim =-1))
                     
             encoder_xyz.append(li_xyz)
-
             # vs_points.append(li_xyz.view(batch_size, -1, 3)[0,...])
-
             li_batch_idx = batch_idx.view(batch_size, -1)[:, :li_xyz.shape[1]]
             encoder_coords.append(torch.cat([li_batch_idx[..., None].float(),li_xyz.view(batch_size, -1, 3)],dim =-1))
-            encoder_features.append(li_features)            
+            encoder_features.append(li_features)        
+
+            # if i > 0:    
             if li_cls_pred is not None:
                 li_cls_batch_idx = batch_idx.view(batch_size, -1)[:, :li_cls_pred.shape[1]]
                 sa_ins_preds.append(torch.cat([li_cls_batch_idx[..., None].float(),li_cls_pred.view(batch_size, -1, li_cls_pred.shape[-1])],dim =-1)) 
             else:
                 sa_ins_preds.append([])
-           
-        ctr_batch_idx = batch_idx.view(batch_size, -1)[:, :li_xyz.shape[1]]
-        ctr_batch_idx = ctr_batch_idx.contiguous().view(-1)
-        batch_dict['ctr_offsets'] = torch.cat((ctr_batch_idx[:, None].float(), ctr_offsets.contiguous().view(-1, 3)), dim=1)
 
-        batch_dict['centers'] = torch.cat((ctr_batch_idx[:, None].float(), centers.contiguous().view(-1, 3)), dim=1)
-        batch_dict['centers_origin'] = torch.cat((ctr_batch_idx[:, None].float(), centers_origin.contiguous().view(-1, 3)), dim=1)
+            proj = self.projs[i]
+            keep_bev = proj.init_bev_coord(encoder_coords[-1].view(-1, 4))[1]
+            init_bev = proj.p2g_bev(encoder_features[-1].view(-1, li_features.shape[1])[keep_bev], batch_size)
+            spatial_features_2d = torch.cat([spatial_features_2d, init_bev], dim = 1)
+            spatial_features_2d = self.multi_bevs[i](spatial_features_2d)
 
-        
-        center_features = encoder_features[-1].permute(0, 2, 1).contiguous().view(-1, encoder_features[-1].shape[1])
-        batch_dict['centers_features'] = center_features
-        batch_dict['ctr_batch_idx'] = ctr_batch_idx
+
+   
         batch_dict['encoder_xyz'] = encoder_xyz
         batch_dict['encoder_coords'] = encoder_coords
         batch_dict['sa_ins_preds'] = sa_ins_preds
         batch_dict['encoder_features'] = encoder_features
+        batch_dict['spatial_features_2d'] = spatial_features_2d
+
+
+        
 
         # save vs_points to txt
 
@@ -185,6 +241,7 @@ class IASSD_Backbone(nn.Module):
         # import numpy as np
         # for i in range(len(vs_points)-1):
         #     np.savetxt('../vspoints/kitti/{}.txt'.format(save_names[i]), vs_points[i].detach().cpu().numpy())
+            
         
         
         ###save per frame 

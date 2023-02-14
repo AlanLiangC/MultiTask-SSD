@@ -82,6 +82,10 @@ class DataProcessor(object):
         if data_dict.get('points', None) is not None:
             mask = common_utils.mask_points_by_range(data_dict['points'], self.point_cloud_range)
             data_dict['points'] = data_dict['points'][mask]
+            if data_dict.get('sem_labels', None) is not None:
+                 data_dict['sem_labels'] = data_dict['sem_labels'][mask]
+            if data_dict.get('fake_labels', None) is not None:
+                 data_dict['fake_labels'] = data_dict['sem_labels'][mask]
 
         if data_dict.get('gt_boxes', None) is not None and config.REMOVE_OUTSIDE_BOXES and self.training:
             mask = box_utils.mask_boxes_outside_range_numpy(
@@ -103,6 +107,10 @@ class DataProcessor(object):
                 sem_labels = data_dict['sem_labels']
                 sem_labels = sem_labels[shuffle_idx]
                 data_dict['sem_labels'] = sem_labels
+            if data_dict.get('fake_labels', None) is not None:
+                sem_labels = data_dict['fake_labels']
+                sem_labels = sem_labels[shuffle_idx]
+                data_dict['fake_labels'] = sem_labels
 
         return data_dict
 
@@ -216,6 +224,7 @@ class DataProcessor(object):
             return data_dict
 
         points = data_dict['points']
+        # data_dict['ori_points'] = points
         if num_points < len(points):
             pts_depth = np.linalg.norm(points[:, 0:3], axis=1)
             pts_near_flag = pts_depth < 40.0
@@ -236,6 +245,7 @@ class DataProcessor(object):
                 extra_choice = np.random.choice(choice, num_points - len(points))
                 choice = np.concatenate((choice, extra_choice), axis=0)
             np.random.shuffle(choice)
+        
         data_dict['points'] = points[choice]
         return data_dict
 
