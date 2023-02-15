@@ -52,7 +52,7 @@ class CenterHeadIoU(nn.Module):
                  predict_boxes_when_training=True):
         super().__init__()
         self.model_cfg = model_cfg
-        self.num_class = 4
+        self.num_class = num_class
         self.grid_size = grid_size
         self.point_cloud_range = point_cloud_range
         self.voxel_size = voxel_size if voxel_size is not None else np.array(self.model_cfg.VOXEL_SIZE, dtype=np.float32)
@@ -595,7 +595,7 @@ class CenterHeadIoU(nn.Module):
                 labels = self.class_id_mapping_each_head[idx][labels.long()]
 
                 if self.rectifier.size(0) > 1:           # class specific
-                    assert self.rectifier.size(0) == self.num_class
+                    assert self.rectifier.size(0) == (self.num_class + 1)
                     rectifier = self.rectifier[labels]   # (H*W,)
                 else: rectifier = self.rectifier
 
