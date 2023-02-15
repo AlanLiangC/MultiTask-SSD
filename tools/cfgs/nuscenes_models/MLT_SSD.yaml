@@ -68,7 +68,7 @@ MODEL:
     MAP_TO_BEV:
         NAME: MLTSSD_encoding
         MLPS: [16]
-        NPOINT: 16384
+        NPOINT: 8192
         SEM_CLASS_NUM: 17
         CLASSIFIER: [64,32]
         VOXEL_SIZE: [0.2, 0.2, 8]

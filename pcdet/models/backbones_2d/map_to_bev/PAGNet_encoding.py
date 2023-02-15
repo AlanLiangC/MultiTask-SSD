@@ -3,6 +3,9 @@ import numpy as np
 import torch.nn as nn
 from ..unets import U_Net
 from .projection import Projection
+# from visdom import Visdom
+
+# viz = Visdom(server='http://127.0.0.1', port=8097)
 
 
 class Classifier(nn.Module):
@@ -80,8 +83,9 @@ class PAGNet_encoding(nn.Module):
         self.point_cloud_range = np.array(self.model_cfg.POINT_CLOUD_RANGE, dtype=np.float32)
         grid_size = (self.point_cloud_range[3:6] - self.point_cloud_range[0:3]) / np.array(model_cfg.VOXEL_SIZE)
         self.grid_size = np.round(grid_size).astype(np.int64)
-        bev_shape = self.grid_size[:2]
 
+        bev_shape = (self.point_cloud_range[3:6] - self.point_cloud_range[0:3]) / np.array(model_cfg.GRID_SIZE)
+        bev_shape = np.round(bev_shape).astype(np.int64)[:2]
 
         for dim in self.mlp_list:
             self.shared_mlps.extend([
@@ -92,11 +96,13 @@ class PAGNet_encoding(nn.Module):
 
         self.mlps.append(nn.Sequential(*self.shared_mlps))
         self.proj = Projection(pc_range = model_cfg.POINT_CLOUD_RANGE, bev_shape = bev_shape)
+        self.proj2 = Projection(pc_range = model_cfg.POINT_CLOUD_RANGE, bev_shape = self.grid_size[:2])
+
         self.num_bev_features = self.mlp_list[-1] * 2
         self.encoder = U_Net(in_ch=self.mlp_list[-1], out_ch=self.mlp_list[-1])
 
         self.classifier = Classifier(input_channels=self.num_bev_features, layers=model_cfg.CLASSIFIER, sem_class=self.sem_num_class)
-        self.sample_feature_ln = BasicBlock(inplanes=self.mlp_list[-1]*2, planes=self.mlp_list[-1]*2, outplanes=self.mlp_list[-1]*4)
+        self.sample_feature_ln = BasicBlock(inplanes=self.mlp_list[-1]*2, planes=self.mlp_list[-1]*2, outplanes=self.mlp_list[-1]*2)
 
         # self.norm_feature_layers = nn.Sequential(
         #     nn.Conv2d(self.mlp_list[-1]*3, self.mlp_list[-1]*2, 3, stride=1, padding=1, bias=False),
@@ -204,13 +210,11 @@ class PAGNet_encoding(nn.Module):
         })
 
         new_coord = points[:,:4]
-        new_keep_bev = self.proj.init_bev_coord(new_coord)[1]
-        new_bev_feature = self.proj.p2g_bev(new_features[new_keep_bev], batch_size) 
+        new_keep_bev = self.proj2.init_bev_coord(new_coord)[1]
+        spatial_features_2d = self.proj2.p2g_bev(new_features[new_keep_bev], batch_size) 
 
-        new_bev_feature[:,:self.mlp_list[-1],...] += output_bev
+        # new_bev_feature[:,:self.mlp_list[-1],...] += output_bev
 
-
-        spatial_features_2d = new_bev_feature
         spatial_features_2d = self.sample_feature_ln(spatial_features_2d)
 
         batch_dict.update({

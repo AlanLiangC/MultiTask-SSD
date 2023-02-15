@@ -4,6 +4,8 @@ import torch.nn as nn
 from ...ops.pointnet2.pointnet2_batch import pointnet2_modules
 import os
 from ..backbones_2d.map_to_bev.projection import Projection
+# from visdom import Visdom
+# viz = Visdom(server='http://127.0.0.1', port=8097)
 
 
 class BasicBlock(nn.Module):
@@ -221,8 +223,10 @@ class PAGNet_Backbone(nn.Module):
             proj = self.projs[i]
             keep_bev = proj.init_bev_coord(encoder_coords[-1].view(-1, 4))[1]
             init_bev = proj.p2g_bev(encoder_features[-1].view(-1, li_features.shape[1])[keep_bev], batch_size)
-            spatial_features_2d = spatial_features_2d + init_bev
+            spatial_features_2d = torch.cat([spatial_features_2d, init_bev], dim = 1)
             spatial_features_2d = self.multi_bevs[i](spatial_features_2d)
+
+            # viz.image(torch.where(torch.sum(init_bev[0], dim = 0)>0, 1, 0).float())
 
 
    

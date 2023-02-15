@@ -42,18 +42,18 @@ MODEL:
             # Group and Abstraction setting:
             RADIUS_LIST: [[0.2,0.8], [0.8,1.6], [1.6,4.8], []]
             NSAMPLE_LIST: [[16,32], [16,32], [16,32], []]            
-            MLPS: [[[16,16,32],  [32,32,64]],
-                   [[64,64,128],  [64,96,128]],
-                   [[128,128,256],  [128,256,256]],
+            MLPS: [[[16,16,16],  [16,32,32]],
+                   [[32,32,64],  [32,48,64]],
+                   [[64,64,128],  [64,128,128]],
                    []]
             
             LAYER_TYPE: ['SA_Layer', 'SA_Layer', 'SA_Layer', 'SA_Layer']
             DILATED_GROUP: [False, False, False, False]            
-            AGGREGATION_MLPS: [[64], [128], [256], [256]]
-            MULTI_BEVS: [[64,64,128,2], [128,128,256,2],[256,256,256,1],[256,256,256,1]]
+            AGGREGATION_MLPS: [[32], [64], [128], [256]]
+            MULTI_BEVS: [[64,32,64,2], [128,64,128,2],[256,128,256,1],[384,256,256,1]]
             BEV_SHAPE: [2,4,8,8]
             # Instance-aware setting:
-            CONFIDENCE_MLPS: [[], [128], [256], []]
+            CONFIDENCE_MLPS: [[], [64], [128], []]
 
             LAYER_INPUT: [0, 1, 2, 3]
             CTR_INDEX: [-1, -1, -1, -1]
