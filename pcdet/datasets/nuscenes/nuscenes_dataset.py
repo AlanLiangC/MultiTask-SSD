@@ -58,20 +58,20 @@ SEMANTIC_CATEGORY_MAP = {
     'noise':                                ('ignore', 0),
     'static.other':                         ('ignore', 0),
     'vehicle.ego':                          ('ignore', 0),
-    'movable_object.barrier':               ('barrier', 1),
-    'vehicle.bicycle':                      ('bicycle', 2),
-    'vehicle.bus.bendy':                    ('bus', 3),
-    'vehicle.bus.rigid':                    ('bus', 3),
-    'vehicle.car':                          ('car', 4),	
-    'vehicle.construction':                 ('construction_vehicle', 5),	
-    'vehicle.motorcycle':                   ('motorcycle', 6),
-    'human.pedestrian.adult':               ('pedestrian', 7),
-    'human.pedestrian.child':               ('pedestrian', 7),
-    'human.pedestrian.construction_worker': ('pedestrian', 7),
-    'human.pedestrian.police_officer':      ('pedestrian', 7),
-    'movable_object.trafficcone':           ('traffic_cone',  8),
-    'vehicle.trailer':                      ('trailer', 9),
-    'vehicle.truck':                        ('truck', 10),
+    'movable_object.barrier':               ('barrier', 1), #
+    'vehicle.bicycle':                      ('bicycle', 2), #
+    'vehicle.bus.bendy':                    ('bus', 3), #
+    'vehicle.bus.rigid':                    ('bus', 3), #
+    'vehicle.car':                          ('car', 4),	 # 
+    'vehicle.construction':                 ('construction_vehicle', 5),	#
+    'vehicle.motorcycle':                   ('motorcycle', 6), #
+    'human.pedestrian.adult':               ('pedestrian', 7), #
+    'human.pedestrian.child':               ('pedestrian', 7), #
+    'human.pedestrian.construction_worker': ('pedestrian', 7), #
+    'human.pedestrian.police_officer':      ('pedestrian', 7), #
+    'movable_object.trafficcone':           ('traffic_cone',  8), #
+    'vehicle.trailer':                      ('trailer', 9), #
+    'vehicle.truck':                        ('truck', 10), #
     'flat.driveable_surface':               ('driveable_surface', 11),
     'flat.other':                           ('other_flat', 12),
     'flat.sidewalk':                        ('sidewalk', 13),

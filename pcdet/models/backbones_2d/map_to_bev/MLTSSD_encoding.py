@@ -71,7 +71,7 @@ class MLTSSD_encoding(nn.Module):
 
     def forward(self, batch_dict):
         # visible points
-        # vs_points = []
+        vs_points = []
 
         batch_size = batch_dict['batch_size']
         coord = batch_dict['points'][:,:4]
@@ -102,8 +102,9 @@ class MLTSSD_encoding(nn.Module):
             batch_mask = coord[:,0] == batch_idx
             batch_points = batch_dict['points'][batch_mask]
             batch_features = cmplt_pw_feature[batch_mask]
-            # if batch_idx == 0:
-                # vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
+            if batch_idx == 0:
+                vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
+                vs_points.append(torch.cat([batch_points[:,1:4],torch.argmax(li_sem_pred, dim = -1)[batch_mask].view(-1,1)], dim = -1))
 
             if batch_points.shape[0] <= self.npoint:
                 emb_points = batch_points.new_zeros([self.npoint, batch_points.shape[-1]])
@@ -116,7 +117,9 @@ class MLTSSD_encoding(nn.Module):
             else:
                 batch_sem_pred = li_sem_pred[batch_mask]
                 batch_sem_args = torch.argmax(li_sem_pred[batch_mask], dim = -1)
-                fg_tag = batch_sem_args > 0
+                fg_tag1 = batch_sem_args > 0
+                fg_tag2 = batch_sem_args < 11
+                fg_tag = fg_tag1 & fg_tag2
                 if torch.sum(fg_tag) >= self.npoint:
                     batch_points = batch_points[fg_tag]
                     batch_features = batch_features[fg_tag]
@@ -133,14 +136,17 @@ class MLTSSD_encoding(nn.Module):
                     
                     bg_points = batch_points[~fg_tag]
                     bg_features = batch_features[~fg_tag]
-                    batch_bg_sem_pred = batch_sem_pred[~fg_tag]
-                    if batch_dict['gt_box'].shape[-1] < 9: # kitti
-                        abs_bg = batch_points.new_zeros([1,self.sem_num_class + 1])
-                    else:
-                        abs_bg = batch_points.new_zeros([1,self.sem_num_class])
-                    abs_bg[0,0] = 1
-                    abs_cos_features = self.cosine_similarity(torch.sigmoid(batch_bg_sem_pred), abs_bg)
-                    _, sample_idx = torch.topk(-abs_cos_features, last_npoint, dim=-1) 
+                    # batch_bg_sem_pred = batch_sem_pred[~fg_tag]
+                    # if batch_dict['gt_box'].shape[-1] < 9: # kitti
+                    #     abs_bg = batch_points.new_zeros([1,self.sem_num_class + 1])
+                    # else:
+                    #     abs_bg = batch_points.new_zeros([1,self.sem_num_class])
+                    # abs_bg[0,0] = 1
+                    # abs_cos_features = self.cosine_similarity(torch.sigmoid(batch_bg_sem_pred), abs_bg)
+                    # _, sample_idx = torch.topk(-abs_cos_features, last_npoint, dim=-1) 
+
+                    
+                    sample_idx = np.random.permutation(bg_points.shape[0])[:last_npoint]
                     soft_bg_points = bg_points[sample_idx]
                     soft_bg_features = bg_features[sample_idx]
 
@@ -151,7 +157,7 @@ class MLTSSD_encoding(nn.Module):
                     new_points.append(batch_points)
                     new_features.append(batch_features)
 
-        # vs_points.append(new_points[0][:,1:4])
+        vs_points.append(new_points[0][:,1:4])
         points = torch.cat(new_points, dim = 0)
         new_features = torch.cat(new_features, dim = 0)
 
@@ -160,7 +166,7 @@ class MLTSSD_encoding(nn.Module):
             'features': new_features,
             'points': points,
             'sem_pred': li_sem_pred,
-            # 'vs_points': vs_points
+            'vs_points': vs_points
         })
         
 

@@ -102,26 +102,9 @@ class IASSD_Backbone(nn.Module):
                 encoded_spconv_tensor: sparse tensor
                 point_features: (N, C)
         """
-        '''
-        batch_dict:
-            frame_id:       2
-            gt_boxes:       torch.Size([2, 36, 8])
-            points:         torch.Size([32768, 5])
-            use_lead_xyz:   torch.Size([2])
-            image_shape:    torch.Size([2, 2])
-            batch_size:     2
-        '''
         batch_size = batch_dict['batch_size']
         points = batch_dict['points']
         batch_idx, xyz, features = self.break_up_pc(points)
-        
-        # vs_points = []
-        # batch_mask = batch_dict['ori_points'][:,0] == 0
-        # ori_points = batch_dict['ori_points'][:,1:4][batch_mask]
-        # fake_labels = batch_dict['fake_labels'][batch_mask]
-        # vs_points.append(torch.cat([ori_points,fake_labels.view(-1,1)], dim = -1))
-        # vs_points.append(xyz[batch_idx == 0])
-
 
         xyz_batch_cnt = xyz.new_zeros(batch_size).int()
         for bs_idx in range(batch_size):
@@ -151,9 +134,6 @@ class IASSD_Backbone(nn.Module):
                 encoder_coords.append(torch.cat([center_origin_batch_idx[..., None].float(),centers_origin.view(batch_size, -1, 3)],dim =-1))
                     
             encoder_xyz.append(li_xyz)
-
-            # vs_points.append(li_xyz.view(batch_size, -1, 3)[0,...])
-
             li_batch_idx = batch_idx.view(batch_size, -1)[:, :li_xyz.shape[1]]
             encoder_coords.append(torch.cat([li_batch_idx[..., None].float(),li_xyz.view(batch_size, -1, 3)],dim =-1))
             encoder_features.append(li_features)            
@@ -178,13 +158,6 @@ class IASSD_Backbone(nn.Module):
         batch_dict['encoder_coords'] = encoder_coords
         batch_dict['sa_ins_preds'] = sa_ins_preds
         batch_dict['encoder_features'] = encoder_features
-
-        # save vs_points to txt
-
-        # save_names = ['original_points','sample_points','DFPS1','DFPS2','ca1','ca2','center_pred']
-        # import numpy as np
-        # for i in range(len(vs_points)-1):
-        #     np.savetxt('../vspoints/kitti/{}.txt'.format(save_names[i]), vs_points[i].detach().cpu().numpy())
         
         
         ###save per frame 

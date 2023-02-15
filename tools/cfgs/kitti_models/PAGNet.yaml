@@ -26,7 +26,8 @@ MODEL:
         NPOINT: 16384
         SEM_CLASS_NUM: 4
         CLASSIFIER: [32,16]
-        VOXEL_SIZE: [0.06, 0.062, 4]
+        VOXEL_SIZE: &VOXEL_SIZE [0.06, 0.062, 4]
+        GRID_SIZE: [0.16, 0.16, 4]
         POINT_CLOUD_RANGE: *POINT_CLOUD_RANGE
 
      
@@ -72,7 +73,7 @@ MODEL:
         USE_BIAS_BEFORE_NORM: True
         USE_DET_FOR_SEM: False
         NUM_HM_CONV: 2
-        VOXEL_SIZE: [0.16, 0.16, 4]
+        VOXEL_SIZE: *VOXEL_SIZE
         SEPARATE_HEAD_CFG:
             HEAD_ORDER: ['center', 'center_z', 'dim', 'rot']
             HEAD_DICT: {
@@ -105,7 +106,7 @@ MODEL:
             }
 
         TARGET_ASSIGNER_CONFIG:
-            FEATURE_MAP_STRIDE: 4
+            FEATURE_MAP_STRIDE: 8
             NUM_MAX_OBJS: 500
             GAUSSIAN_OVERLAP: 0.1
             MIN_RADIUS: 2
