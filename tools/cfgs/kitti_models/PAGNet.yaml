@@ -26,7 +26,7 @@ MODEL:
         NPOINT: 16384
         SEM_CLASS_NUM: 4
         CLASSIFIER: [32,16]
-        VOXEL_SIZE: [0.16, 0.16, 4]
+        VOXEL_SIZE: [0.06, 0.062, 4]
         POINT_CLOUD_RANGE: *POINT_CLOUD_RANGE
 
      
@@ -49,8 +49,8 @@ MODEL:
             LAYER_TYPE: ['SA_Layer', 'SA_Layer', 'SA_Layer', 'SA_Layer']
             DILATED_GROUP: [False, False, False, False]            
             AGGREGATION_MLPS: [[64], [128], [256], [256]]
-            MULTI_BEVS: [[96,64,64,2], [192,128,128,2],[384,256,256,1],[512,256,256,1]]
-            BEV_SHAPE: [1,2,4,4]
+            MULTI_BEVS: [[64,64,128,2], [128,128,256,2],[256,256,256,1],[256,256,256,1]]
+            BEV_SHAPE: [2,4,8,8]
             # Instance-aware setting:
             CONFIDENCE_MLPS: [[], [128], [256], []]
 
@@ -163,7 +163,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 81
+    NUM_EPOCHS: 82
 
     OPTIMIZER: adam_onecycle
     LR: 0.01

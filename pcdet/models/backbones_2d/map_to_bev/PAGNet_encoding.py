@@ -36,12 +36,12 @@ class BasicBlock(nn.Module):
 
         assert norm_fn is not None
         bias = norm_fn is not None
-        self.conv1 = nn.Conv2d(inplanes, planes, 3, stride=stride, padding=1, bias=bias)
+        self.conv1 = nn.Conv2d(inplanes, planes, 3, stride=1, padding=1, bias=bias)
         self.bn1 = norm_fn(planes)
         self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(planes, inplanes, 3, stride=stride, padding=1, bias=bias)
+        self.conv2 = nn.Conv2d(planes, inplanes, 3, stride=1, padding=1, bias=bias)
         self.bn2 = norm_fn(inplanes)
-        self.conv3 = nn.Conv2d(inplanes, outplanes, 3, stride=stride, padding=1, bias=bias)
+        self.conv3 = nn.Conv2d(inplanes, outplanes, 3, stride=2, padding=1, bias=bias)
         self.bn3 = norm_fn(outplanes)
         self.downsample = downsample
 
@@ -96,7 +96,7 @@ class PAGNet_encoding(nn.Module):
         self.encoder = U_Net(in_ch=self.mlp_list[-1], out_ch=self.mlp_list[-1])
 
         self.classifier = Classifier(input_channels=self.num_bev_features, layers=model_cfg.CLASSIFIER, sem_class=self.sem_num_class)
-        self.sample_feature_ln = BasicBlock(inplanes=self.mlp_list[-1]*3, planes=self.mlp_list[-1]*2, outplanes=self.mlp_list[-1]*2)
+        self.sample_feature_ln = BasicBlock(inplanes=self.mlp_list[-1]*2, planes=self.mlp_list[-1]*2, outplanes=self.mlp_list[-1]*4)
 
         # self.norm_feature_layers = nn.Sequential(
         #     nn.Conv2d(self.mlp_list[-1]*3, self.mlp_list[-1]*2, 3, stride=1, padding=1, bias=False),
@@ -205,10 +205,12 @@ class PAGNet_encoding(nn.Module):
 
         new_coord = points[:,:4]
         new_keep_bev = self.proj.init_bev_coord(new_coord)[1]
-        new_bev_feature = self.proj.p2g_bev(new_features[new_keep_bev], batch_size)
+        new_bev_feature = self.proj.p2g_bev(new_features[new_keep_bev], batch_size) 
+
+        new_bev_feature[:,:self.mlp_list[-1],...] += output_bev
 
 
-        spatial_features_2d = torch.cat([output_bev, new_bev_feature], dim = 1)
+        spatial_features_2d = new_bev_feature
         spatial_features_2d = self.sample_feature_ln(spatial_features_2d)
 
         batch_dict.update({
