@@ -17,7 +17,7 @@ class MLT_SSD_Head(PointHeadTemplate):
 
         target_cfg = self.model_cfg.TARGET_CONFIG
         self.sem_criterion = loss_utils.CPGNetCriterion(
-                    weight='dynamic-log', ignore=[0],classes='present', with_ls=True, with_tc=False
+                    weight='dynamic-log', ignore=target_cfg.SEM_IGNORE,classes='present', with_ls=True, with_tc=False
                 )
         self.box_coder = getattr(box_coder_utils, target_cfg.BOX_CODER)(
             **target_cfg.BOX_CODER_CONFIG

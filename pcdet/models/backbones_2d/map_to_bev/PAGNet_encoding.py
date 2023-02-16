@@ -119,7 +119,7 @@ class PAGNet_encoding(nn.Module):
 
     def forward(self, batch_dict):
         # visible points
-        # vs_points = []
+        vs_points = []
 
         batch_size = batch_dict['batch_size']
         coord = batch_dict['points'][:,:4]
@@ -150,8 +150,9 @@ class PAGNet_encoding(nn.Module):
             batch_mask = coord[:,0] == batch_idx
             batch_points = batch_dict['points'][batch_mask]
             batch_features = cmplt_pw_feature[batch_mask]
-            # if batch_idx == 0:
-                # vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
+            if batch_idx == 0:
+                vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
+                vs_points.append(torch.cat([batch_points[:,1:4],torch.argmax(li_sem_pred, dim = -1)[batch_mask].view(-1,1)], dim = -1))
 
             if batch_points.shape[0] <= self.npoint:
                 emb_points = batch_points.new_zeros([self.npoint, batch_points.shape[-1]])
@@ -197,7 +198,7 @@ class PAGNet_encoding(nn.Module):
                     new_points.append(batch_points)
                     new_features.append(batch_features)
 
-        # vs_points.append(new_points[0][:,1:4])
+        vs_points.append(new_points[0][:,1:4])
         points = torch.cat(new_points, dim = 0)
         new_features = torch.cat(new_features, dim = 0)
 
@@ -206,7 +207,7 @@ class PAGNet_encoding(nn.Module):
             'features': new_features,
             'points': points,
             'sem_pred': li_sem_pred,
-            # 'vs_points': vs_points
+            'vs_points': vs_points
         })
 
         new_coord = points[:,:4]

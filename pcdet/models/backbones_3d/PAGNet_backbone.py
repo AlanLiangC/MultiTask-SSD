@@ -169,7 +169,7 @@ class PAGNet_Backbone(nn.Module):
         points = batch_dict['points']
         batch_idx, xyz, _ = self.break_up_pc(points)
         features = batch_dict['features']
-        # vs_points = batch_dict['vs_points']
+        vs_points = batch_dict['vs_points']
 
         xyz_batch_cnt = xyz.new_zeros(batch_size).int()
         for bs_idx in range(batch_size):
@@ -208,7 +208,7 @@ class PAGNet_Backbone(nn.Module):
                 encoder_coords.append(torch.cat([center_origin_batch_idx[..., None].float(),centers_origin.view(batch_size, -1, 3)],dim =-1))
                     
             encoder_xyz.append(li_xyz)
-            # vs_points.append(li_xyz.view(batch_size, -1, 3)[0,...])
+            vs_points.append(li_xyz.view(batch_size, -1, 3)[0,...])
             li_batch_idx = batch_idx.view(batch_size, -1)[:, :li_xyz.shape[1]]
             encoder_coords.append(torch.cat([li_batch_idx[..., None].float(),li_xyz.view(batch_size, -1, 3)],dim =-1))
             encoder_features.append(li_features)        
@@ -241,10 +241,10 @@ class PAGNet_Backbone(nn.Module):
 
         # save vs_points to txt
 
-        # save_names = ['original_points','sample_points','DFPS1','DFPS2','ca1','ca2']
-        # import numpy as np
-        # for i in range(len(vs_points)):
-        #     np.savetxt('../vspoints/kitti/{}.txt'.format(save_names[i]), vs_points[i].detach().cpu().numpy())
+        save_names = ['original_points', 'pred_points', 'sample_points','DFPS1','DFPS2','ca1','ca2']
+        import numpy as np
+        for i in range(len(vs_points)):
+            np.savetxt('../vspoints/kitti/{}.txt'.format(save_names[i]), vs_points[i].detach().cpu().numpy())
             
         
         

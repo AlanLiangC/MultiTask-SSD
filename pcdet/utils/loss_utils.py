@@ -158,12 +158,15 @@ class CPGNetCriterion(nn.Module):
     def __init__(self, weight, ignore=None, classes='present', with_ls=True, with_tc=False):
         super(CPGNetCriterion, self).__init__()
         self.weight = weight
-        self.ignore = ignore
+        if len(ignore) == 0:
+            self.ignore = None
+        else:
+            self.ignore = ignore
         self.with_ls = with_ls
         self.with_tc = with_tc
 
         if with_ls:
-            self.loss_ls = LovaszSoftmaxLoss(ignore=ignore, classes=classes)
+            self.loss_ls = LovaszSoftmaxLoss(ignore=self.ignore, classes=classes)
         if with_tc:
             self.loss_tc = nn.L1Loss()
 
