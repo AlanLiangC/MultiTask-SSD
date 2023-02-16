@@ -114,8 +114,8 @@ class MLTSSD_Backbone(nn.Module):
         '''
         batch_size = batch_dict['batch_size']
         points = batch_dict['points']
-        batch_idx, xyz, _ = self.break_up_pc(points)
-        features = batch_dict['features']
+        batch_idx, xyz, features = self.break_up_pc(points)
+        # features = batch_dict['features']
         # vs_points = batch_dict['vs_points']
         soft_bg_points = batch_dict['soft_bg_points']
 
@@ -146,8 +146,9 @@ class MLTSSD_Backbone(nn.Module):
 
             if self.layer_types[i] == 'SA_Layer':
                 ctr_xyz = encoder_xyz[self.ctr_idx_list[i]] if self.ctr_idx_list[i] != -1 else None
-                li_xyz, li_features, li_cls_pred = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz, soft_bg_points = soft_bg_points, soft_fg_npoint = self.soft_fg_list[i])
-
+                li_xyz, li_features, li_cls_pred, new_soft_bg_points = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz, soft_bg_points = soft_bg_points, soft_fg_npoint = self.soft_fg_list[i])
+                soft_bg_points = new_soft_bg_points
+            
             elif self.layer_types[i] == 'Vote_Layer': #i=4
                 li_xyz, li_features, xyz_select, ctr_offsets = self.SA_modules[i](xyz_input, feature_input)
                 centers = li_xyz

@@ -252,6 +252,7 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
         sampled_idx_list = []
         soft_fg_npoint = kwargs.get('soft_fg_npoint', None)
         soft_bg_points = kwargs.get('soft_bg_points', None)
+        new_soft_bg_points = []
         if ctr_xyz is None:
             last_sample_end_index = 0
             
@@ -355,7 +356,6 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
             
             batch_size = new_xyz.shape[0]
             if soft_fg_npoint is not None and len(soft_bg_points) == batch_size and len(soft_fg_npoint) > 0:
-                new_soft_bg_points = []
                 for batch in range(batch_size):
                     batch_fg_points = soft_bg_points[batch][:,1:4].unsqueeze(0).transpose(1, 2).contiguous() 
                     if batch_fg_points.shape[-1] >= soft_fg_npoint[0]:
@@ -402,7 +402,7 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
         else:
             cls_features = None
 
-        return new_xyz, new_features, cls_features
+        return new_xyz, new_features, cls_features, new_soft_bg_points
 
 class Vote_layer(nn.Module):
     """ Light voting module with limitation"""

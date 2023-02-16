@@ -57,10 +57,10 @@ class MLTSSD_encoding(nn.Module):
 
         self.mlps.append(nn.Sequential(*self.shared_mlps))
         self.proj = Projection(pc_range = model_cfg.POINT_CLOUD_RANGE, bev_shape = bev_shape)
-        self.num_bev_features = self.mlp_list[-1]
+        self.num_bev_features = 1
         self.encoder = U_Net(in_ch=self.mlp_list[-1], out_ch=self.mlp_list[-1])
 
-        self.classifier = Classifier(input_channels=self.num_bev_features, layers=model_cfg.CLASSIFIER, sem_class=self.sem_num_class)
+        self.classifier = Classifier(input_channels=self.mlp_list[-1]*2, layers=model_cfg.CLASSIFIER, sem_class=self.sem_num_class)
 
  
     def cosine_similarity(self,x,y):
@@ -92,7 +92,7 @@ class MLTSSD_encoding(nn.Module):
         c_bev = pw_feature.shape[1]
         cmplt_pw_feature = output_bev.new_zeros([coord.shape[0], c_bev])
         cmplt_pw_feature[keep_bev] = pw_feature # Only change features in range
-        # cmplt_pw_feature = torch.cat([cmplt_pw_feature, origin_pw_feature], dim = -1)
+        cmplt_pw_feature = torch.cat([cmplt_pw_feature, origin_pw_feature], dim = -1)
         li_sem_pred = self.classifier(cmplt_pw_feature)
 
         # kitti
@@ -175,13 +175,13 @@ class MLTSSD_encoding(nn.Module):
 
     
         batch_dict.update({
-            'features': new_features,
+            # 'features': new_features,
             'points': points,
             'sem_pred': li_sem_pred,
             'soft_bg_points': soft_bg_points,
             # 'vs_points': vs_points
         })
-        
+        #
 
         # batch_dict['li_cls_pred'] = li_cls_pred
 
