@@ -64,7 +64,7 @@ class CenterHeadIoU(nn.Module):
         self.class_id_mapping_each_head = []
         if self.model_cfg.get('SEM_TASK', False):
             self.sem_criterion = loss_utils.CPGNetCriterion(
-                    weight='dynamic-log', ignore=None,classes='present', with_ls=True, with_tc=False
+                    weight='dynamic-log', ignore=model_cfg.TARGET_CONFIG.SEM_IGNORE,classes='present', with_ls=True, with_tc=False
                 )
 
         self.ins_loss_func = loss_utils.WeightedClassificationLoss()

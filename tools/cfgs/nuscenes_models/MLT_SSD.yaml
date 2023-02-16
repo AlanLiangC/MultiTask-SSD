@@ -112,6 +112,7 @@ MODEL:
         TARGET_CONFIG:
             INS_AWARE_ASSIGN: True
             GT_EXTRA_WIDTH: [0.2, 0.2, 0.2]
+            SEM_IGNORE: [0]
            
             ASSIGN_METHOD:
                 NAME: 'extend_gt'

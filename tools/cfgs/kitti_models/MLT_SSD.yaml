@@ -46,7 +46,8 @@ MODEL:
         NAME: MLTSSD_Backbone
         SA_CONFIG:
             # Sampling setting:
-            NPOINT_LIST: [[4096], [1024], [512], [256], [-1], [256]]
+            NPOINT_LIST: [[3072], [768], [384], [256], [-1], [256]]
+            SOFT_FG_LIST: [[1024], [256], [128], [], [], []]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
             SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['D-FPS'], ['D-FPS'], [], []]
             # Group and Abstraction setting:

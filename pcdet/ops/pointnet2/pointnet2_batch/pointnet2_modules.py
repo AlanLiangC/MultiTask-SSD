@@ -235,7 +235,7 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
             self.confidence_layers = None
 
 
-    def forward(self, xyz: torch.Tensor, features: torch.Tensor = None, cls_features: torch.Tensor = None, new_xyz=None, ctr_xyz=None):
+    def forward(self, xyz: torch.Tensor, features: torch.Tensor = None, cls_features: torch.Tensor = None, new_xyz=None, ctr_xyz=None, **kwargs):
         """
         :param xyz: (B, N, 3) tensor of the xyz coordinates of the features
         :param features: (B, C, N) tensor of the descriptors of the the features
@@ -250,6 +250,8 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
         new_features_list = []
         xyz_flipped = xyz.transpose(1, 2).contiguous() 
         sampled_idx_list = []
+        soft_fg_npoint = kwargs.get('soft_fg_npoint', None)
+        soft_bg_points = kwargs.get('soft_bg_points', None)
         if ctr_xyz is None:
             last_sample_end_index = 0
             
@@ -350,6 +352,21 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
 
             sampled_idx_list = torch.cat(sampled_idx_list, dim=-1) 
             new_xyz = pointnet2_utils.gather_operation(xyz_flipped, sampled_idx_list).transpose(1, 2).contiguous()
+            
+            batch_size = new_xyz.shape[0]
+            if soft_fg_npoint is not None and len(soft_bg_points) == batch_size and len(soft_fg_npoint) > 0:
+                new_soft_bg_points = []
+                for batch in range(batch_size):
+                    batch_fg_points = soft_bg_points[batch][:,1:4].unsqueeze(0).transpose(1, 2).contiguous() 
+                    if batch_fg_points.shape[-1] >= soft_fg_npoint[0]:
+                        fg_sample_idx = pointnet2_utils.furthest_point_sample(batch_fg_points, soft_fg_npoint[0])
+                        new_batch_soft_bg_points = pointnet2_utils.gather_operation(batch_fg_points, fg_sample_idx).transpose(1, 2).contiguous().squeeze()
+                        new_soft_bg_points.append(torch.cat([new_xyz.new_ones([soft_fg_npoint[0], 1]) * batch, new_batch_soft_bg_points], dim = -1))
+                    else:
+                        continue
+                if len(new_soft_bg_points) == batch_size:
+                    new_xyz = torch.cat([new_xyz, torch.cat(new_soft_bg_points, dim = 0)[:,1:4].view(batch_size, -1, 3)], dim = 1)
+                    
 
         else:
             new_xyz = ctr_xyz

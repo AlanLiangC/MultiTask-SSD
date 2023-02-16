@@ -22,6 +22,7 @@ class MLTSSD_Backbone(nn.Module):
         self.layer_types = sa_config.LAYER_TYPE
         self.ctr_idx_list = sa_config.CTR_INDEX
         self.layer_inputs = sa_config.LAYER_INPUT
+        self.soft_fg_list = sa_config.get('SOFT_FG_LIST', None)
         self.aggregation_mlps = sa_config.get('AGGREGATION_MLPS', None)
         self.confidence_mlps = sa_config.get('CONFIDENCE_MLPS', None)
         self.max_translate_range = sa_config.get('MAX_TRANSLATE_RANGE', None)
@@ -116,6 +117,7 @@ class MLTSSD_Backbone(nn.Module):
         batch_idx, xyz, _ = self.break_up_pc(points)
         features = batch_dict['features']
         # vs_points = batch_dict['vs_points']
+        soft_bg_points = batch_dict['soft_bg_points']
 
         xyz_batch_cnt = xyz.new_zeros(batch_size).int()
         for bs_idx in range(batch_size):
@@ -144,7 +146,7 @@ class MLTSSD_Backbone(nn.Module):
 
             if self.layer_types[i] == 'SA_Layer':
                 ctr_xyz = encoder_xyz[self.ctr_idx_list[i]] if self.ctr_idx_list[i] != -1 else None
-                li_xyz, li_features, li_cls_pred = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz)
+                li_xyz, li_features, li_cls_pred = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz, soft_bg_points = soft_bg_points, soft_fg_npoint = self.soft_fg_list[i])
 
             elif self.layer_types[i] == 'Vote_Layer': #i=4
                 li_xyz, li_features, xyz_select, ctr_offsets = self.SA_modules[i](xyz_input, feature_input)

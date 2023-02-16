@@ -98,6 +98,7 @@ class MLTSSD_encoding(nn.Module):
         # kitti
         new_points = []
         new_features = []
+        soft_bg_points = []
         for batch_idx in range(batch_size):
             batch_mask = coord[:,0] == batch_idx
             batch_points = batch_dict['points'][batch_mask]
@@ -114,12 +115,21 @@ class MLTSSD_encoding(nn.Module):
                 emb_features[:batch_points.shape[0],:] = batch_features
                 new_points.append(emb_points)
                 new_features.append(emb_features)
+
+                # Add soft_bg_points in each batch
+                batch_sem_pred = li_sem_pred[batch_mask]
+                batch_sem_args = torch.argmax(li_sem_pred[batch_mask], dim = -1)
+                soft_bg_points.append(batch_points[batch_sem_args > 0])
             else:
                 batch_sem_pred = li_sem_pred[batch_mask]
                 batch_sem_args = torch.argmax(li_sem_pred[batch_mask], dim = -1)
                 fg_tag1 = batch_sem_args > 0
                 fg_tag2 = batch_sem_args < 11
                 fg_tag = fg_tag1 & fg_tag2
+
+                # Add soft_bg_points in each batch
+                soft_bg_points.append(batch_points[fg_tag])
+
                 if torch.sum(fg_tag) >= self.npoint:
                     batch_points = batch_points[fg_tag]
                     batch_features = batch_features[fg_tag]
@@ -147,10 +157,10 @@ class MLTSSD_encoding(nn.Module):
 
                     
                     sample_idx = np.random.permutation(bg_points.shape[0])[:last_npoint]
-                    soft_bg_points = bg_points[sample_idx]
+                    _soft_bg_points = bg_points[sample_idx]
                     soft_bg_features = bg_features[sample_idx]
 
-                    batch_points = torch.cat([fg_points, soft_bg_points], dim = 0)
+                    batch_points = torch.cat([fg_points, _soft_bg_points], dim = 0)
                     batch_features = torch.cat([fp_features, soft_bg_features], dim = 0)
 
                     assert batch_points.shape[0] == self.npoint
@@ -161,11 +171,14 @@ class MLTSSD_encoding(nn.Module):
         points = torch.cat(new_points, dim = 0)
         new_features = torch.cat(new_features, dim = 0)
 
+        # soft_bg_points = torch.cat(soft_bg_points, dim = 0)
 
+    
         batch_dict.update({
             'features': new_features,
             'points': points,
             'sem_pred': li_sem_pred,
+            'soft_bg_points': soft_bg_points,
             # 'vs_points': vs_points
         })
         
