@@ -57,7 +57,7 @@ class MLTSSD_encoding(nn.Module):
 
         self.mlps.append(nn.Sequential(*self.shared_mlps))
         self.proj = Projection(pc_range = model_cfg.POINT_CLOUD_RANGE, bev_shape = bev_shape)
-        self.num_bev_features = self.mlp_list[-1] * 2
+        self.num_bev_features = self.mlp_list[-1]
         self.encoder = U_Net(in_ch=self.mlp_list[-1], out_ch=self.mlp_list[-1])
 
         self.classifier = Classifier(input_channels=self.num_bev_features, layers=model_cfg.CLASSIFIER, sem_class=self.sem_num_class)
@@ -71,7 +71,7 @@ class MLTSSD_encoding(nn.Module):
 
     def forward(self, batch_dict):
         # visible points
-        vs_points = []
+        # vs_points = []
 
         batch_size = batch_dict['batch_size']
         coord = batch_dict['points'][:,:4]
@@ -92,7 +92,7 @@ class MLTSSD_encoding(nn.Module):
         c_bev = pw_feature.shape[1]
         cmplt_pw_feature = output_bev.new_zeros([coord.shape[0], c_bev])
         cmplt_pw_feature[keep_bev] = pw_feature # Only change features in range
-        cmplt_pw_feature = torch.cat([cmplt_pw_feature, origin_pw_feature], dim = -1)
+        # cmplt_pw_feature = torch.cat([cmplt_pw_feature, origin_pw_feature], dim = -1)
         li_sem_pred = self.classifier(cmplt_pw_feature)
 
         # kitti
@@ -102,9 +102,9 @@ class MLTSSD_encoding(nn.Module):
             batch_mask = coord[:,0] == batch_idx
             batch_points = batch_dict['points'][batch_mask]
             batch_features = cmplt_pw_feature[batch_mask]
-            if batch_idx == 0:
-                vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
-                vs_points.append(torch.cat([batch_points[:,1:4],torch.argmax(li_sem_pred, dim = -1)[batch_mask].view(-1,1)], dim = -1))
+            # if batch_idx == 0:
+            #     vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
+            #     vs_points.append(torch.cat([batch_points[:,1:4],torch.argmax(li_sem_pred, dim = -1)[batch_mask].view(-1,1)], dim = -1))
 
             if batch_points.shape[0] <= self.npoint:
                 emb_points = batch_points.new_zeros([self.npoint, batch_points.shape[-1]])
@@ -157,7 +157,7 @@ class MLTSSD_encoding(nn.Module):
                     new_points.append(batch_points)
                     new_features.append(batch_features)
 
-        vs_points.append(new_points[0][:,1:4])
+        # vs_points.append(new_points[0][:,1:4])
         points = torch.cat(new_points, dim = 0)
         new_features = torch.cat(new_features, dim = 0)
 
@@ -166,7 +166,7 @@ class MLTSSD_encoding(nn.Module):
             'features': new_features,
             'points': points,
             'sem_pred': li_sem_pred,
-            'vs_points': vs_points
+            # 'vs_points': vs_points
         })
         
 
