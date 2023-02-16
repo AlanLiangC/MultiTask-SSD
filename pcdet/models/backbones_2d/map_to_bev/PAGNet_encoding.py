@@ -83,9 +83,8 @@ class PAGNet_encoding(nn.Module):
         self.point_cloud_range = np.array(self.model_cfg.POINT_CLOUD_RANGE, dtype=np.float32)
         grid_size = (self.point_cloud_range[3:6] - self.point_cloud_range[0:3]) / np.array(model_cfg.VOXEL_SIZE)
         self.grid_size = np.round(grid_size).astype(np.int64)
+        bev_shape = self.grid_size[:2]
 
-        bev_shape = (self.point_cloud_range[3:6] - self.point_cloud_range[0:3]) / np.array(model_cfg.GRID_SIZE)
-        bev_shape = np.round(bev_shape).astype(np.int64)[:2]
 
         for dim in self.mlp_list:
             self.shared_mlps.extend([
@@ -96,19 +95,10 @@ class PAGNet_encoding(nn.Module):
 
         self.mlps.append(nn.Sequential(*self.shared_mlps))
         self.proj = Projection(pc_range = model_cfg.POINT_CLOUD_RANGE, bev_shape = bev_shape)
-        self.proj2 = Projection(pc_range = model_cfg.POINT_CLOUD_RANGE, bev_shape = self.grid_size[:2])
-
-        self.num_bev_features = self.mlp_list[-1] * 2
+        self.num_bev_features = self.mlp_list[-1]*2
         self.encoder = U_Net(in_ch=self.mlp_list[-1], out_ch=self.mlp_list[-1])
 
-        self.classifier = Classifier(input_channels=self.num_bev_features, layers=model_cfg.CLASSIFIER, sem_class=self.sem_num_class)
-        self.sample_feature_ln = BasicBlock(inplanes=self.mlp_list[-1]*2, planes=self.mlp_list[-1]*2, outplanes=self.mlp_list[-1]*2)
-
-        # self.norm_feature_layers = nn.Sequential(
-        #     nn.Conv2d(self.mlp_list[-1]*3, self.mlp_list[-1]*2, 3, stride=1, padding=1, bias=False),
-        #     nn.BatchNorm2d(),
-        #     nn.ReLU()
-        # )
+        self.classifier = Classifier(input_channels=self.mlp_list[-1]*2, layers=model_cfg.CLASSIFIER, sem_class=self.sem_num_class)
 
  
     def cosine_similarity(self,x,y):
@@ -119,7 +109,7 @@ class PAGNet_encoding(nn.Module):
 
     def forward(self, batch_dict):
         # visible points
-        vs_points = []
+        # vs_points = []
 
         batch_size = batch_dict['batch_size']
         coord = batch_dict['points'][:,:4]
@@ -146,13 +136,14 @@ class PAGNet_encoding(nn.Module):
         # kitti
         new_points = []
         new_features = []
+        soft_bg_points = []
         for batch_idx in range(batch_size):
             batch_mask = coord[:,0] == batch_idx
             batch_points = batch_dict['points'][batch_mask]
             batch_features = cmplt_pw_feature[batch_mask]
-            if batch_idx == 0:
-                vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
-                vs_points.append(torch.cat([batch_points[:,1:4],torch.argmax(li_sem_pred, dim = -1)[batch_mask].view(-1,1)], dim = -1))
+            # if batch_idx == 0:
+            #     vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
+            #     vs_points.append(torch.cat([batch_points[:,1:4],torch.argmax(li_sem_pred, dim = -1)[batch_mask].view(-1,1)], dim = -1))
 
             if batch_points.shape[0] <= self.npoint:
                 emb_points = batch_points.new_zeros([self.npoint, batch_points.shape[-1]])
@@ -162,10 +153,21 @@ class PAGNet_encoding(nn.Module):
                 emb_features[:batch_points.shape[0],:] = batch_features
                 new_points.append(emb_points)
                 new_features.append(emb_features)
+
+                # Add soft_bg_points in each batch
+                batch_sem_pred = li_sem_pred[batch_mask]
+                batch_sem_args = torch.argmax(li_sem_pred[batch_mask], dim = -1)
+                soft_bg_points.append(batch_points[batch_sem_args > 0])
             else:
                 batch_sem_pred = li_sem_pred[batch_mask]
                 batch_sem_args = torch.argmax(li_sem_pred[batch_mask], dim = -1)
-                fg_tag = batch_sem_args > 0
+                fg_tag1 = batch_sem_args > 0
+                fg_tag2 = batch_sem_args < 11
+                fg_tag = fg_tag1 & fg_tag2
+
+                # Add soft_bg_points in each batch
+                soft_bg_points.append(batch_points[fg_tag])
+
                 if torch.sum(fg_tag) >= self.npoint:
                     batch_points = batch_points[fg_tag]
                     batch_features = batch_features[fg_tag]
@@ -182,54 +184,45 @@ class PAGNet_encoding(nn.Module):
                     
                     bg_points = batch_points[~fg_tag]
                     bg_features = batch_features[~fg_tag]
-                    batch_bg_sem_pred = batch_sem_pred[~fg_tag]
+                    # batch_bg_sem_pred = batch_sem_pred[~fg_tag]
+                    # if batch_dict['gt_box'].shape[-1] < 9: # kitti
+                    #     abs_bg = batch_points.new_zeros([1,self.sem_num_class + 1])
+                    # else:
+                    #     abs_bg = batch_points.new_zeros([1,self.sem_num_class])
+                    # abs_bg[0,0] = 1
+                    # abs_cos_features = self.cosine_similarity(torch.sigmoid(batch_bg_sem_pred), abs_bg)
+                    # _, sample_idx = torch.topk(-abs_cos_features, last_npoint, dim=-1) 
 
-                    abs_bg = batch_points.new_zeros([1,self.sem_num_class])
-                    abs_bg[0,0] = 1
-                    abs_cos_features = self.cosine_similarity(torch.sigmoid(batch_bg_sem_pred), abs_bg)
-                    _, sample_idx = torch.topk(-abs_cos_features, last_npoint, dim=-1) 
-                    soft_bg_points = bg_points[sample_idx]
+                    
+                    sample_idx = np.random.permutation(bg_points.shape[0])[:last_npoint]
+                    _soft_bg_points = bg_points[sample_idx]
                     soft_bg_features = bg_features[sample_idx]
 
-                    batch_points = torch.cat([fg_points, soft_bg_points], dim = 0)
+                    batch_points = torch.cat([fg_points, _soft_bg_points], dim = 0)
                     batch_features = torch.cat([fp_features, soft_bg_features], dim = 0)
 
                     assert batch_points.shape[0] == self.npoint
                     new_points.append(batch_points)
                     new_features.append(batch_features)
 
-        vs_points.append(new_points[0][:,1:4])
+        # vs_points.append(new_points[0][:,1:4])
         points = torch.cat(new_points, dim = 0)
         new_features = torch.cat(new_features, dim = 0)
 
+        # soft_bg_points = torch.cat(soft_bg_points, dim = 0)
 
+    
         batch_dict.update({
             'features': new_features,
             'points': points,
             'sem_pred': li_sem_pred,
-            'vs_points': vs_points
+            'soft_bg_points': soft_bg_points,
+            # 'vs_points': vs_points
         })
-
-        new_coord = points[:,:4]
-        new_keep_bev = self.proj2.init_bev_coord(new_coord)[1]
-        spatial_features_2d = self.proj2.p2g_bev(new_features[new_keep_bev], batch_size) 
-
-        # new_bev_feature[:,:self.mlp_list[-1],...] += output_bev
-
-        spatial_features_2d = self.sample_feature_ln(spatial_features_2d)
-
-        batch_dict.update({
-            'grid_size': self.grid_size,
-            'spatial_features_2d': spatial_features_2d
-        })
-
-        
-        
-
+        #
         # batch_dict['li_cls_pred'] = li_cls_pred
 
         return batch_dict
-
 
 
 

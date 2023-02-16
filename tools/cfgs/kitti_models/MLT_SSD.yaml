@@ -49,7 +49,7 @@ MODEL:
             NPOINT_LIST: [[3072], [768], [384], [256], [-1], [256]]
             SOFT_FG_LIST: [[1024], [256], [128], [], [], []]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
-            SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['D-FPS'], ['D-FPS'], [], []]
+            SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
             # Group and Abstraction setting:
             RADIUS_LIST: [[0.2,0.8], [0.8,1.6], [1.6,4.8], [], [], [4.8, 6.4]]
             NSAMPLE_LIST: [[16,32], [16,32], [16,32], [], [], [16, 32]]            
