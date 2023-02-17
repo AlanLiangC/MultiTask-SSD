@@ -359,7 +359,7 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
                 for batch in range(batch_size):
                     batch_fg_points = soft_bg_points[batch][:,1:4].unsqueeze(0).transpose(1, 2).contiguous() 
                     if batch_fg_points.shape[-1] >= soft_fg_npoint[0]:
-                        fg_sample_idx = pointnet2_utils.furthest_point_sample(batch_fg_points, soft_fg_npoint[0])
+                        fg_sample_idx = pointnet2_utils.furthest_point_sample(batch_fg_points.transpose(1, 2).contiguous(), soft_fg_npoint[0])
                         new_batch_soft_bg_points = pointnet2_utils.gather_operation(batch_fg_points, fg_sample_idx).transpose(1, 2).contiguous().squeeze()
                         new_soft_bg_points.append(torch.cat([new_xyz.new_ones([soft_fg_npoint[0], 1]) * batch, new_batch_soft_bg_points], dim = -1))
                     else:
