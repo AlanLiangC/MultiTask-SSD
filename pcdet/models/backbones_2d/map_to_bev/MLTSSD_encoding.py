@@ -129,9 +129,9 @@ class MLTSSD_encoding(nn.Module):
         c_bev = bone_pw_feature.shape[1]
         cmplt_pw_feature = output_bev.new_zeros([coord.shape[0], c_bev])
         cmplt_pw_feature[keep_bev] = bone_pw_feature # Only change features in range
-        cmplt_sem_pw_feature = torch.cat([bone_pw_feature, sem_pw_feature], dim = -1)
+        cmplt_sem_pw_feature = torch.cat([cmplt_pw_feature, sem_pw_feature], dim = -1)
         li_sem_pred = self.classifier(cmplt_sem_pw_feature)
-        cmplt_det_pw_feature = torch.cat([bone_pw_feature, det_pw_feature], dim = -1)
+        cmplt_det_pw_feature = torch.cat([cmplt_pw_feature, det_pw_feature], dim = -1)
 
         # kitti
         new_points = []
