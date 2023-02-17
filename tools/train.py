@@ -24,7 +24,7 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default='./cfgs/kitti_models/MLT_SSD.yaml', help='specify the config for training')
-    # parser.add_argument('--cfg_file', type=str, default='./cfgs/nuscenes_models/MLT_SSD.yaml', help='specify the config for training')
+    # parser.add_argument('--cfg_file', type=str, default='./cfgs/nuscenes_models/IA-SSD.yaml', help='specify the config for training')
 
 
     parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')

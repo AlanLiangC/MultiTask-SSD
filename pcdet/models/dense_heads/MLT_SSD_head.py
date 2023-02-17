@@ -410,7 +410,7 @@ class MLT_SSD_Head(PointHeadTemplate):
             if self.SEM_TASK:
                 sem_pred = self.forward_ret_dict['sem_pred']
                 sem_labels = self.forward_ret_dict['sem_labels']
-                sem_loss = self.sem_criterion(sem_pred,sem_labels)['loss'] * 0.4
+                sem_loss = self.sem_criterion(sem_pred,sem_labels)['loss']
 
         # vote loss
         if self.model_cfg.TARGET_CONFIG.get('ASSIGN_METHOD') is not None and \

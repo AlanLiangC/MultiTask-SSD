@@ -114,8 +114,8 @@ class MLTSSD_Backbone(nn.Module):
         '''
         batch_size = batch_dict['batch_size']
         points = batch_dict['points']
-        batch_idx, xyz, features = self.break_up_pc(points)
-        # features = batch_dict['features']
+        batch_idx, xyz, _ = self.break_up_pc(points)
+        features = batch_dict['features']
         # vs_points = batch_dict['vs_points']
         soft_bg_points = batch_dict['soft_bg_points']
 

@@ -39,6 +39,8 @@ DATA_CONFIG:
                 'test': False
             }
 
+        # -   NAME: add_fake_sem_label
+
     POINT_FEATURE_ENCODING: {
         encoding_type: absolute_coordinates_encoding,
         used_feature_list: ['x', 'y', 'z', 'intensity'],
@@ -145,7 +147,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 81
+    NUM_EPOCHS: 82
 
     OPTIMIZER: adam_onecycle
     LR: 0.01

@@ -247,6 +247,9 @@ class DataProcessor(object):
             np.random.shuffle(choice)
         
         data_dict['points'] = points[choice]
+
+        if data_dict.get('sem_labels', None) is not None:
+            data_dict['sem_labels'] = data_dict['sem_labels'][choice]
         return data_dict
 
     def calculate_grid_size(self, data_dict=None, config=None):

@@ -35,6 +35,9 @@ MODEL:
     MAP_TO_BEV:
         NAME: MLTSSD_encoding
         MLPS: [16]
+        SEM_MLPS: [8,16]
+        DET_MLPS: [8,16]
+
         NPOINT: 16384
         SEM_CLASS_NUM: 4
         CLASSIFIER: [32,16]
@@ -46,8 +49,8 @@ MODEL:
         NAME: MLTSSD_Backbone
         SA_CONFIG:
             # Sampling setting:
-            NPOINT_LIST: [[3072], [768], [384], [384], [-1], [384]]
-            SOFT_FG_LIST: [[1024], [256], [128], [], [], []]
+            NPOINT_LIST: [[3072], [896], [512], [256], [-1], [256]]
+            SOFT_FG_LIST: [[1024], [128], [], [], [], []]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
             SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
             # Group and Abstraction setting:
@@ -139,7 +142,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 83
+    NUM_EPOCHS: 100
 
     OPTIMIZER: adam_onecycle
     LR: 0.01
