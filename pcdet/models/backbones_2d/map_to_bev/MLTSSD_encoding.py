@@ -156,7 +156,7 @@ class MLTSSD_encoding(nn.Module):
 
                 # Add soft_bg_points in each batch
                 batch_sem_pred = li_sem_pred[batch_mask]
-                batch_sem_args = torch.argmax(li_sem_pred, dim = -1)
+                batch_sem_args = torch.argmax(batch_sem_pred, dim = -1)
                 fg_tag1 = batch_sem_args > 0
                 fg_tag2 = batch_sem_args < 11 # Nuscenes
                 fg_tag = fg_tag1 & fg_tag2
