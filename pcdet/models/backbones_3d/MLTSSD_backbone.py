@@ -65,7 +65,7 @@ class MLTSSD_Backbone(nn.Module):
                         radii=sa_config.RADIUS_LIST[k],
                         nsamples=sa_config.NSAMPLE_LIST[k],
                         mlps=mlps,
-                        use_xyz=False,          # change                                      
+                        use_xyz=True,          # change                                      
                         dilated_group=sa_config.DILATED_GROUP[k],
                         aggregation_mlp=aggregation_mlp,
                         confidence_mlp=confidence_mlp,
