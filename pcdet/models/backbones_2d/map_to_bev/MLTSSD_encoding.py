@@ -82,7 +82,7 @@ class MLTSSD_encoding(nn.Module):
 
 
         self.proj = Projection(pc_range = model_cfg.POINT_CLOUD_RANGE, bev_shape = bev_shape)
-        self.num_bev_features = self.mlp_list[-1] + 4
+        self.num_bev_features = self.mlp_list[-1]
         self.encoder = U_Net(in_ch=self.sem_mlp_list[-1], out_ch=self.sem_mlp_list[-1])
 
         self.classifier = Classifier(input_channels=self.mlp_list[-1]*2, layers=model_cfg.CLASSIFIER, sem_class=self.sem_num_class)
@@ -131,7 +131,8 @@ class MLTSSD_encoding(nn.Module):
         cmplt_pw_feature[keep_bev] = bone_pw_feature # Only change features in range
         cmplt_sem_pw_feature = torch.cat([cmplt_pw_feature, sem_pw_feature], dim = -1)
         li_sem_pred = self.classifier(cmplt_sem_pw_feature)
-        cmplt_det_pw_feature = torch.cat([cmplt_pw_feature[:,-4:], det_pw_feature], dim = -1)
+        # cmplt_det_pw_feature = torch.cat([cmplt_pw_feature[:,-4:], det_pw_feature], dim = -1)
+        cmplt_det_pw_feature = det_pw_feature.clone()
 
         # kitti
         new_points = []
