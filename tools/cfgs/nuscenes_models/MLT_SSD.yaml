@@ -3,12 +3,11 @@ CLASS_NAMES: ['car','truck', 'construction_vehicle', 'bus', 'trailer',
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/nuscenes_dataset.yaml
-    MLT: False
-    POINT_CLOUD_RANGE: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
-
+    POINT_CLOUD_RANGE: &POINT_CLOUD_RANGE [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 
     DATA_AUGMENTOR:
         DISABLE_AUG_LIST: ['placeholder']
+
         AUG_CONFIG_LIST:
             - NAME: random_world_flip
               ALONG_AXIS_LIST: ['x', 'y']
@@ -23,7 +22,6 @@ DATA_CONFIG:
               NOISE_TRANSLATE_STD: 0.5
               ALONG_AXIS_LIST: ['x', 'y', 'z']
 
-
     DATA_PROCESSOR:
         -   NAME: mask_points_and_boxes_outside_range
             REMOVE_OUTSIDE_BOXES: True
@@ -33,34 +31,13 @@ DATA_CONFIG:
                 'train': True,
                 'test': False
             }
-        -   NAME: add_fake_sem_label
-
-        # -   NAME: sample_points_by_voxels  # after the shuffle_points
-        #     SAMPLE_TYPE: 'raw'    # 'mean_vfe', 'raw' (default)
-        #     VOXEL_SIZE: [0.064, 0.064, 0.2]
-        #     MAX_POINTS_PER_VOXEL: 5            
-        #     MAX_NUMBER_OF_VOXELS: {
-        #         'train': 80000,
-        #         'test': 90000
-        #         }
-        #     NUM_POINTS: {
-        #         'train': 28672,
-        #         'test': 28672
-        #         }
-
-        # - NAME: transform_points_to_voxels
-        #   VOXEL_SIZE: [0.2, 0.2, 8]
-        #   MAX_POINTS_PER_VOXEL: 32
-        #   MAX_NUMBER_OF_VOXELS: {
-        #     'train': 30000,
-        #     'test': 30000
-        #   }
 
     POINT_FEATURE_ENCODING: {
         encoding_type: absolute_coordinates_encoding,
         used_feature_list: ['x', 'y', 'z', 'intensity'],
         src_feature_list: ['x', 'y', 'z', 'intensity'],
-    }
+        }
+
 
 MODEL:
     NAME: IASSD
@@ -68,18 +45,22 @@ MODEL:
     MAP_TO_BEV:
         NAME: MLTSSD_encoding
         MLPS: [16]
-        NPOINT: 8192
+        SEM_MLPS: [8,16]
+        DET_MLPS: [8,16]
+
+        NPOINT: 16384
         SEM_CLASS_NUM: 17
         CLASSIFIER: [64,32]
-        VOXEL_SIZE: [0.2, 0.2, 8]
-        POINT_CLOUD_RANGE: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+        VOXEL_SIZE: [0.2, 0.2, 1]
+        POINT_CLOUD_RANGE: *POINT_CLOUD_RANGE
 
      
     BACKBONE_3D:
         NAME: MLTSSD_Backbone
         SA_CONFIG:
             # Sampling setting:
-            NPOINT_LIST: [[4096], [1024], [512], [256], [-1], [256]]
+            NPOINT_LIST: [[3072], [896], [512], [256], [-1], [256]]
+            SOFT_FG_LIST: [[1024], [128], [], [], [], []]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
             SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
             # Group and Abstraction setting:
@@ -143,7 +124,7 @@ MODEL:
             CENTERNESS_REGULARIZATION: True
             CENTERNESS_REGULARIZATION_SA: True
             LOSS_WEIGHTS: {
-                'ins_aware_weight': [2.0, 1.0, 1.0, 1.0],
+                'ins_aware_weight': [2, 1.0, 1.0, 1.0],
                 'vote_weight': 1.0,
                 'point_cls_weight': 1.0,
                 'point_box_weight': 1.0,
@@ -171,7 +152,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 8
-    NUM_EPOCHS: 81
+    NUM_EPOCHS: 100
 
     OPTIMIZER: adam_onecycle
     LR: 0.01
