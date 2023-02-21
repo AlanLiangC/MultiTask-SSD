@@ -109,7 +109,7 @@ class Sparse2BEV(nn.Module):
         if batch_dict.get('pillar_coords', None) is not None:
             pillar_coords = batch_dict['pillar_coords']
         else:
-            pillar_coords = batch_dict['voxel_coords'][:,[0,3,2]]
+            pillar_coords = batch_dict['voxel_coords'][:,[0,2,3]]
         batch_size = batch_dict['batch_size']
         
         input_sp_tensor = AlanSparse2Dense(
