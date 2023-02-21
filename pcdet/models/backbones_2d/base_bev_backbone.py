@@ -110,3 +110,69 @@ class BaseBEVBackbone(nn.Module):
         data_dict['spatial_features_2d'] = x
 
         return data_dict
+
+class RB_Fusion(nn.Module):
+    expansion = 1
+
+    def __init__(self, model_cfg, input_channels):
+        super(RB_Fusion, self).__init__()
+
+        self.model_cfg = model_cfg
+        bev_feature_dim = model_cfg.BEV_DIM
+        range_feature_dim = model_cfg.RANGE_DIM
+
+        self.channel_avg_func = nn.AdaptiveAvgPool2d((1,1))
+        self.channel_max_func = nn.AdaptiveMaxPool2d((1,1))
+        self.channel_ln = nn.Sequential(nn.Linear(in_features=(bev_feature_dim + range_feature_dim) * 2, 
+                                                out_features=bev_feature_dim,
+                                                bias=False),
+                                        nn.ReLU(),
+                                        nn.Dropout(0.2),
+                                        nn.Linear(in_features=bev_feature_dim,
+                                                out_features=bev_feature_dim + range_feature_dim),
+                                        nn.ReLU())
+                                                
+        self.space_ln = nn.Sequential(nn.Conv2d(in_channels=4, out_channels=1, kernel_size=(3,3), stride=1, padding=1),
+                                        nn.ReLU())
+        
+
+        self.act = nn.Sigmoid()
+
+        self.num_bev_features = bev_feature_dim + range_feature_dim
+        self.bev_feature_dim = bev_feature_dim
+        self.range_feature_dim = range_feature_dim
+
+    def forward(self, batch_dict):
+        x = batch_dict['spatial_features']
+        
+        bev_feature = x[:,:self.bev_feature_dim,...]
+        range_feature = x[:,self.bev_feature_dim:,...]
+        
+        # bev
+        bev_channel_avg = self.channel_avg_func(bev_feature).squeeze()
+        bev_channel_max = self.channel_max_func(bev_feature).squeeze()
+
+        bev_space_avg = torch.mean(bev_feature, dim = 1).unsqueeze(dim = 1)
+        bev_space_max = torch.max(bev_feature, dim = 1)[0].unsqueeze(dim = 1)
+
+        # range
+        range_channel_avg = self.channel_avg_func(range_feature).squeeze()
+        range_channel_max = self.channel_max_func(range_feature).squeeze()
+
+        range_space_avg = torch.mean(range_feature, dim = 1).unsqueeze(dim = 1)
+        range_space_max = torch.max(range_feature, dim = 1)[0].unsqueeze(dim = 1)
+
+        # attention map
+        channel_wise = torch.cat([bev_channel_avg, range_channel_avg, bev_channel_max, range_channel_max], dim = -1)
+        space_wise = torch.cat([bev_space_avg, range_space_avg, bev_space_max, range_space_max], dim = 1)
+
+        channel_wise = self.channel_ln(channel_wise).unsqueeze(dim = -1).unsqueeze(dim = -1)
+        space_wise = self.space_ln(space_wise).repeat(1,channel_wise.shape[1],1,1)
+        attention_map = channel_wise * space_wise
+        attention_map = self.act(attention_map)
+
+        out = attention_map*x + x
+        
+        batch_dict['spatial_features_2d'] = out
+
+        return batch_dict

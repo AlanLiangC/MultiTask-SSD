@@ -51,19 +51,19 @@ class ConvMLP(nn.Module):
             self.head = None
         self.apply(self.init_weight)
 
-    def forward(self, x):
-        x = self.tokenizer(x)
-        x = self.conv_stages(x)
-        x = x.permute(0, 2, 3, 1)
+    def forward(self, x): # x: [4, 3, 512, 512]
+        x = self.tokenizer(x) # [4, 64, 128, 128]
+        x = self.conv_stages(x) # [4, 128, 64, 64]
+        x = x.permute(0, 2, 3, 1) # [4, 64, 64, 128]
         for stage in self.stages:
-            x = stage(x)
+            x = stage(x) # [4, 32, 32, 256] --> [4, 16, 16, 512] --> [4, 16, 16, 512]
         if self.head is None:
             return x
         B, _, _, C = x.shape
-        x = x.reshape(B, -1, C)
+        x = x.reshape(B, -1, C) # [4, 256, 512]
         x = self.norm(x)
-        x = x.mean(dim=1)
-        x = self.head(x)
+        x = x.mean(dim=1) # [4, 512]
+        x = self.head(x) # [4, 1000]
         return x
 
     @staticmethod

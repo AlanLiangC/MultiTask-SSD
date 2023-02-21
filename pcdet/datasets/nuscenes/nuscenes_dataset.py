@@ -168,18 +168,18 @@ class NuScenesDataset(DatasetTemplate):
         lidar_path = self.root_path / info['lidar_path']
         points = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
         
-        # sweep_points_list = [points]
-        # sweep_times_list = [np.zeros((points.shape[0], 1))]
+        sweep_points_list = [points]
+        sweep_times_list = [np.zeros((points.shape[0], 1))]
 
-        # for k in np.random.choice(len(info['sweeps']), max_sweeps - 1, replace=False):
-        #     points_sweep, times_sweep = self.get_sweep(info['sweeps'][k])
-        #     sweep_points_list.append(points_sweep)
-        #     sweep_times_list.append(times_sweep)
+        for k in np.random.choice(len(info['sweeps']), max_sweeps - 1, replace=False):
+            points_sweep, times_sweep = self.get_sweep(info['sweeps'][k])
+            sweep_points_list.append(points_sweep)
+            sweep_times_list.append(times_sweep)
 
-        # points = np.concatenate(sweep_points_list, axis=0)
-        # times = np.concatenate(sweep_times_list, axis=0).astype(points.dtype)
+        points = np.concatenate(sweep_points_list, axis=0)
+        times = np.concatenate(sweep_times_list, axis=0).astype(points.dtype)
 
-        # points = np.concatenate((points, times), axis=1)
+        points = np.concatenate((points, times), axis=1)
         return points
 
     def get_sem_labels(self, index):
