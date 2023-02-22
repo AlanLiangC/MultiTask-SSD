@@ -23,8 +23,8 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default='./cfgs/kitti_models/AL.yaml', help='specify the config for training')
-    # parser.add_argument('--cfg_file', type=str, default='./cfgs/nuscenes_models/IA-SSD.yaml', help='specify the config for training')
+    # parser.add_argument('--cfg_file', type=str, default='./cfgs/kitti_models/AL.yaml', help='specify the config for training')
+    parser.add_argument('--cfg_file', type=str, default='./cfgs/nuscenes_models/AL.yaml', help='specify the config for training')
 
 
     parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
@@ -208,6 +208,6 @@ def main():
 
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVIDES"] = "0"
-    torch.cuda.set_device(0)
+    os.environ["CUDA_VISIBLE_DEVIDES"] = "1"
+    torch.cuda.set_device(1)
     main()
