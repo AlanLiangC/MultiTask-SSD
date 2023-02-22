@@ -128,7 +128,7 @@ MODEL:
             SCORE_THRESH: 0.1
             POST_CENTER_LIMIT_RANGE: [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
             MAX_OBJ_PER_SAMPLE: 500
-            RECTIFIER: [0.7, 0.67, 0.53, 0.65]
+            RECTIFIER: [0.7, 0.65, 0.53]
             NMS_CONFIG:
                 NMS_NAME: class_specific_nms
                 NMS_TYPE: nms_gpu
