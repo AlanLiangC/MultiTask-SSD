@@ -1,4 +1,4 @@
-cd cvae_uncertainty;mkdir -p logs;
+# cd cvae_uncertainty;mkdir -p logs;
 exp_id=exp20 # you can set other exp_id
 for iter in `seq 0 1`;do
     sed "s@# FOLD_IDX: 0@FOLD_IDX: ${iter}@" cfgs/${exp_id}_gen_ori.yaml > cfgs/${exp_id}_gen.yaml
