@@ -201,11 +201,11 @@ class NuScenesDataset(DatasetTemplate):
 
         info = copy.deepcopy(self.infos[index])
         points = self.get_lidar_with_sweeps(index, max_sweeps=self.dataset_cfg.MAX_SWEEPS)
-        sem_labels = self.get_sem_labels(index)
+        # sem_labels = self.get_sem_labels(index)
 
         input_dict = {
             'points': points,
-            'sem_labels': sem_labels,
+            # 'sem_labels': sem_labels,
             'frame_id': Path(info['lidar_path']).stem,
             'metadata': {'token': info['token']}
         }

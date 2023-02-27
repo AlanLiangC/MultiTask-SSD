@@ -3,8 +3,8 @@ import numpy as np
 import torch.nn as nn
 from ..unets import U_Net
 from .projection import Projection
-# from visdom import Visdom
 
+# from visdom import Visdom
 # viz = Visdom(server='http://127.0.0.1', port=8097)
 
 

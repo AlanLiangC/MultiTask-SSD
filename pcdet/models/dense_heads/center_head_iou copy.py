@@ -474,14 +474,6 @@ class CenterHeadIoU(nn.Module):
                         points=sa_xyz.view(-1,sa_xyz.shape[-1]).detach(), gt_boxes=gt_boxes, extend_gt_boxes=extend_gt_boxes,
                         set_ignore_flag=False, use_ex_gt_assign= True 
                     )
-                # else:
-                #     extend_gt_boxes = box_utils.enlarge_box3d(
-                #         gt_boxes.view(-1, gt_boxes.shape[-1]), extra_width=[0.5, 0.5, 0.5]
-                #     ).view(batch_size, -1, gt_boxes.shape[-1]) 
-                #     sa_targets_dict = self.assign_stack_targets_IASSD(
-                #         points=sa_xyz.view(-1,sa_xyz.shape[-1]).detach(), gt_boxes=gt_boxes, extend_gt_boxes=extend_gt_boxes,
-                #         set_ignore_flag=False, use_ex_gt_assign= True 
-                #     )
                 sa_xyz_coords.append(sa_xyz)
                 sa_ins_labels.append(sa_targets_dict['point_cls_labels'])
                 sa_gt_box_of_fg_points.append(sa_targets_dict['gt_box_of_fg_points'])

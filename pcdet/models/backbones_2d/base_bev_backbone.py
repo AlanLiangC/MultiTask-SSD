@@ -129,11 +129,9 @@ class RB_Fusion(nn.Module):
                                         nn.ReLU(),
                                         nn.Dropout(0.2),
                                         nn.Linear(in_features=bev_feature_dim,
-                                                out_features=bev_feature_dim + range_feature_dim),
-                                        nn.ReLU())
+                                                out_features=bev_feature_dim + range_feature_dim))
                                                 
-        self.space_ln = nn.Sequential(nn.Conv2d(in_channels=4, out_channels=1, kernel_size=(3,3), stride=1, padding=1),
-                                        nn.ReLU())
+        self.space_ln = nn.Sequential(nn.Conv2d(in_channels=4, out_channels=1, kernel_size=(3,3), stride=1, padding=1))
         
 
         self.act = nn.Sigmoid()
@@ -166,12 +164,16 @@ class RB_Fusion(nn.Module):
         channel_wise = torch.cat([bev_channel_avg, range_channel_avg, bev_channel_max, range_channel_max], dim = -1)
         space_wise = torch.cat([bev_space_avg, range_space_avg, bev_space_max, range_space_max], dim = 1)
 
-        channel_wise = self.channel_ln(channel_wise).unsqueeze(dim = -1).unsqueeze(dim = -1)
-        space_wise = self.space_ln(space_wise).repeat(1,channel_wise.shape[1],1,1)
-        attention_map = channel_wise * space_wise
-        attention_map = self.act(attention_map)
+        channel_wise = self.act(self.channel_ln(channel_wise)).unsqueeze(dim = -1).unsqueeze(dim = -1)
+        space_wise = self.act(self.space_ln(space_wise))
+        # attention_map = channel_wise * space_wise
+        # attention_map = self.act(attention_map)
 
-        out = attention_map*x + x
+        # out = attention_map*x + x
+        out = channel_wise * x
+        out = space_wise * out
+
+        out = out + x
         
         batch_dict['spatial_features_2d'] = out
 

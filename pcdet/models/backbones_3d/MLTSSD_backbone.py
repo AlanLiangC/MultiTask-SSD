@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from ..backbones_2d.map_to_bev.projection import Projection
 from ...ops.pointnet2.pointnet2_batch import pointnet2_modules
 import os
 
@@ -26,7 +26,6 @@ class MLTSSD_Backbone(nn.Module):
         self.aggregation_mlps = sa_config.get('AGGREGATION_MLPS', None)
         self.confidence_mlps = sa_config.get('CONFIDENCE_MLPS', None)
         self.max_translate_range = sa_config.get('MAX_TRANSLATE_RANGE', None)
-
 
         for k in range(sa_config.NSAMPLE_LIST.__len__()):
             if isinstance(self.layer_inputs[k], list): ###
@@ -114,10 +113,10 @@ class MLTSSD_Backbone(nn.Module):
         '''
         batch_size = batch_dict['batch_size']
         points = batch_dict['points']
-        batch_idx, xyz, _ = self.break_up_pc(points)
-        features = batch_dict['features']
+        batch_idx, xyz, features = self.break_up_pc(points)
+        # features = batch_dict['features']
         # vs_points = batch_dict['vs_points']
-        soft_bg_points = batch_dict['soft_bg_points']
+        # soft_bg_points = batch_dict['soft_bg_points']
 
         xyz_batch_cnt = xyz.new_zeros(batch_size).int()
         for bs_idx in range(batch_size):
@@ -146,8 +145,8 @@ class MLTSSD_Backbone(nn.Module):
 
             if self.layer_types[i] == 'SA_Layer':
                 ctr_xyz = encoder_xyz[self.ctr_idx_list[i]] if self.ctr_idx_list[i] != -1 else None
-                li_xyz, li_features, li_cls_pred, new_soft_bg_points = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz, soft_bg_points = soft_bg_points, soft_fg_npoint = self.soft_fg_list[i])
-                soft_bg_points = new_soft_bg_points
+                li_xyz, li_features, li_cls_pred, _ = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz, soft_bg_points = None, soft_fg_npoint = None)
+                # soft_bg_points = new_soft_bg_points
             
             elif self.layer_types[i] == 'Vote_Layer': #i=4
                 li_xyz, li_features, xyz_select, ctr_offsets = self.SA_modules[i](xyz_input, feature_input)
@@ -169,22 +168,41 @@ class MLTSSD_Backbone(nn.Module):
             else:
                 sa_ins_preds.append([])
            
-        ctr_batch_idx = batch_idx.view(batch_size, -1)[:, :li_xyz.shape[1]]
-        ctr_batch_idx = ctr_batch_idx.contiguous().view(-1)
-        batch_dict['ctr_offsets'] = torch.cat((ctr_batch_idx[:, None].float(), ctr_offsets.contiguous().view(-1, 3)), dim=1)
+        # ctr_batch_idx = batch_idx.view(batch_size, -1)[:, :li_xyz.shape[1]]
+        # ctr_batch_idx = ctr_batch_idx.contiguous().view(-1)
+        # batch_dict['ctr_offsets'] = torch.cat((ctr_batch_idx[:, None].float(), ctr_offsets.contiguous().view(-1, 3)), dim=1)
 
-        batch_dict['centers'] = torch.cat((ctr_batch_idx[:, None].float(), centers.contiguous().view(-1, 3)), dim=1)
-        batch_dict['centers_origin'] = torch.cat((ctr_batch_idx[:, None].float(), centers_origin.contiguous().view(-1, 3)), dim=1)
+        # batch_dict['centers'] = torch.cat((ctr_batch_idx[:, None].float(), centers.contiguous().view(-1, 3)), dim=1)
+        # batch_dict['centers_origin'] = torch.cat((ctr_batch_idx[:, None].float(), centers_origin.contiguous().view(-1, 3)), dim=1)
 
         
-        center_features = encoder_features[-1].permute(0, 2, 1).contiguous().view(-1, encoder_features[-1].shape[1])
-        batch_dict['centers_features'] = center_features
-        batch_dict['ctr_batch_idx'] = ctr_batch_idx
+        # center_features = encoder_features[-1].permute(0, 2, 1).contiguous().view(-1, encoder_features[-1].shape[1])
+        # batch_dict['centers_features'] = center_features
+        # batch_dict['ctr_batch_idx'] = ctr_batch_idx
         batch_dict['encoder_xyz'] = encoder_xyz
         batch_dict['encoder_coords'] = encoder_coords
         batch_dict['sa_ins_preds'] = sa_ins_preds
         batch_dict['encoder_features'] = encoder_features
 
+        bev_shape = batch_dict['grid_size'][0][[1,0]]
+        pc_range = batch_dict['point_cloud_range']
+        sample_pw_feature = {}
+        for i in range(len(encoder_xyz) - 1):
+            proj = Projection(pc_range=pc_range, bev_shape=bev_shape//(2**(i+1)))
+            coord = encoder_coords[i+1].view(-1,4)
+            features = encoder_features[i+1]
+            feature_dim = features.shape[1]
+            features = features.view(-1,feature_dim)
+
+            keep_bev = proj.init_bev_coord(coord)[1]
+            bev_feature = proj.p2g_bev(features[keep_bev], batch_size)
+
+            sample_pw_feature.update({
+                f'e{i+1}': bev_feature
+            })
+
+        batch_dict['sample_pw_feature'] = sample_pw_feature
+            
         # save vs_points to txt
 
         # save_names = ['original_points','pred_sem_points','sample_points','DFPS1','DFPS2','ca1','ca2','center_pred']

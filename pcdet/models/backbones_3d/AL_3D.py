@@ -3,7 +3,9 @@ import torch.nn as nn
 # from ..backbones_2d.cpgnet_moudles import Projection
 from ..backbones_2d.AL_2D import CP_Unet
 from ..backbones_2d.map_to_bev.projection import Projection
-
+from .MLTSSD_backbone import MLTSSD_Backbone
+# from visdom import Visdom
+# viz = Visdom(server='http://127.0.0.1', port=8097)
 
 def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
@@ -179,74 +181,185 @@ class FusionBlock(nn.Module):
         return sd3
 
 
+class FusionBlockV2(nn.Module):
+    def __init__(self, input_channels) -> None:
+        super().__init__()
+        self.cbam1 = CBAM(inplanes=input_channels,planes=input_channels)
+        self.cbam2 = nn.Sequential(CBAM(inplanes=input_channels,planes=input_channels),
+                                    nn.Conv2d(input_channels,input_channels // 2,kernel_size=(3,3),padding=1),
+                                    nn.BatchNorm2d(input_channels // 2),
+                                    nn.ReLU())
+        self.cbam3 = nn.Sequential(CBAM(inplanes=input_channels // 2,planes=input_channels //2),
+                                    nn.Conv2d(input_channels // 2,input_channels // 4,kernel_size=(3,3),padding=1),
+                                    nn.BatchNorm2d(input_channels // 4),
+                                    nn.ReLU())
+
+        self.transconv1 = nn.Sequential(nn.ConvTranspose2d(in_channels = input_channels,
+                                            out_channels=input_channels // 2,
+                                            kernel_size=(3,3),
+                                            padding=1,
+                                            stride=2,
+                                            output_padding=1),
+                                        nn.BatchNorm2d(input_channels // 2),
+                                        nn.ReLU())
+
+        self.transconv2 = nn.Sequential(nn.ConvTranspose2d(in_channels = input_channels // 2,
+                                            out_channels=input_channels // 4,
+                                            kernel_size=(3,3),
+                                            padding=1,
+                                            stride=2,
+                                            output_padding=1),
+                                        nn.BatchNorm2d(input_channels // 4),
+                                        nn.ReLU())
+
+        self.transconv3 = nn.Sequential(nn.ConvTranspose2d(in_channels = input_channels // 4,
+                                            out_channels=input_channels // 8,
+                                            kernel_size=(3,3),
+                                            padding=1,
+                                            stride=2,
+                                            output_padding=1),
+                                            nn.BatchNorm2d(input_channels // 8),
+                                            nn.ReLU())
+
+        self.sd1 = Space2Depth(input_channels // 2, input_channels // 4)
+        self.sd2 = Space2Depth(input_channels, input_channels // 2)
+        self.sd3 = Space2Depth(input_channels // 2, input_channels // 2)
+        
+        
+
+    def forward(self, encode_dict):
+        e1 = encode_dict['e3'] # [2, 128, 4, 256]
+        e2 = encode_dict['e2'] # [2, 64, 8, 512]
+        e3 = encode_dict['e1'] # [2, 32, 16, 1024]
+
+        batch_size = e1.shape[0]
+
+        e1 = self.cbam1(e1) # [2, 128, 4, 256]
+        e1 = self.transconv1(e1) # [2, 64, 8, 512]
+
+        e2 = torch.cat([e1, e2], dim = 1) # [2, 128, 8, 512]
+        e2 = self.cbam2(e2) # [2, 64, 8, 512]
+        e2 = self.transconv2(e2) # [2, 32, 16, 1024]
+
+        e3 = torch.cat([e2, e3], dim = 1)
+        e3 = self.cbam3(e3)
+        e3 = self.transconv3(e3) # [2, 16, 32, 2048]
+
+        # Space2Depth + Conv 1x1
+        sd1 = self.sd1(e3, down_scale = 2) # [2, 32, 304, 304]
+        sd2 = self.sd2(sd1, down_scale = 2) # [2, 64, 152, 152]
+        sd3 = self.sd3(sd2, down_scale = 1) # [2, 64, 152, 152]
+
+        return sd3
+
 
 class AL_3D(nn.Module):
-    def __init__(self, model_cfg, input_channels, grid_size, **kwargs) -> None:
+    def __init__(self, model_cfg, input_channels, num_class, grid_size, muLti_task = True, **kwargs) -> None:
         super().__init__()
 
-        self.proj = Projection(model_cfg.POINT_CLOUD_RANGE, model_cfg.PC_FOV, model_cfg.BEV_SHAPE, model_cfg.RANGE_SHAPE)
+        self.model_version = model_cfg.MODEL_VERSION
+        self.multi_task = model_cfg.MULTI_TASK
+        self.pc_range = model_cfg.POINT_CLOUD_RANGE
+        num_bev_seg_features = model_cfg.get('NUM_BEV_SEG_FEATURES', None)
+        num_range_seg_features = model_cfg.get('NUM_RANGE_SEG_FEATURES', None)
+        assert self.model_version in ['pillarNet_range', 'pillarNet_pw']
+        if self.model_version == 'pillarNet_range':
+            
+            self.proj = Projection(model_cfg.POINT_CLOUD_RANGE, model_cfg.PC_FOV, model_cfg.BEV_SHAPE, model_cfg.RANGE_SHAPE)
+            self.range_embed = nn.Linear(in_features=5, out_features=model_cfg.NUM_RANGE_FEATURES, bias=False)
+            self.range_AL_2D = CP_Unet(input_channels=model_cfg.NUM_RANGE_FEATURES,output_channels=num_range_seg_features,layers_num=4,unet=self.multi_task)
+            self.fusion = FusionBlock(input_channels=model_cfg.NUM_FUSION_FEATURES)
 
-        self.range_embed = nn.Linear(in_features=4, out_features=model_cfg.NUM_RANGE_FEATURES, bias=False)
-        self.range_AL_2D = CP_Unet(input_channels=model_cfg.NUM_RANGE_FEATURES,layers_num=4,output_channels=model_cfg.NUM_RANGE_SEG_FEATURES)
-        self.bev_AL_2D = CP_Unet(input_channels=model_cfg.NUM_BEV_FEATURES,layers_num=4,output_channels=model_cfg.NUM_BEV_SEG_FEATURES)
-        self.fusion = FusionBlock(input_channels=model_cfg.NUM_FUSION_FEATURES)
+            if self.multi_task:
+                self.classifier = nn.Sequential(
+                    # self.act,
+                    nn.Linear(model_cfg.NUM_BEV_SEG_FEATURES + model_cfg.NUM_RANGE_SEG_FEATURES,128),
+                    nn.ReLU(),
+                    nn.Dropout(0.5),
+                    nn.Linear(128,64),
+                    nn.ReLU(),
+                    nn.Dropout(0.5),
+                    nn.Linear(64,model_cfg.SEM_CLS))
 
-        self.classifier = nn.Sequential(
-            # self.act,
-            nn.Linear(model_cfg.NUM_BEV_SEG_FEATURES + model_cfg.NUM_RANGE_SEG_FEATURES,128),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128,64),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(64,model_cfg.SEM_CLS)
-        )
+        self.bev_AL_2D = CP_Unet(input_channels=model_cfg.NUM_BEV_FEATURES,output_channels=num_bev_seg_features,layers_num=4,unet=self.multi_task)
+        
+
+        if self.model_version == 'pillarNet_pw':
+
+            sample_cfg = model_cfg.SAMPLE_PW_FEATURE
+            self.sample_model = MLTSSD_Backbone(sample_cfg, num_class=num_class, input_channels=4)
+            self.fusion = FusionBlockV2(input_channels=model_cfg.NUM_FUSION_FEATURES)
 
         self.num_point_features = 128
 
-    def forward(self, batch_dict):
-
-        # prepare operations
+    def forward(self, batch_dict): 
+        batch_dict['point_cloud_range'] = self.pc_range
         batch_size = batch_dict['batch_size']
-        ori_bev = batch_dict['spatial_features']
-        coord = batch_dict['points'][:,:4]
-        points = batch_dict['points'][:,1:]
-        range_pw_features = self.range_embed(points)
-        
-
-        # project & inv project
-        keep_bev = self.proj.init_bev_coord(coord)[1]
-        keep_range = self.proj.init_range_coord(coord)[1]
-        ori_range = self.proj.p2g_range(range_pw_features[keep_range], batch_size)
-
         # 2D learning
+        ori_bev = batch_dict['spatial_features']
         encode_bev, encode_bev_dict = self.bev_AL_2D(ori_bev)
-        encode_range, encode_range_dict = self.range_AL_2D(ori_range)
-        encode_range_dict['coord'] = coord
+        # prepare operations
+        if hasattr(self,'sample_model'):
+            batch_dict = self.sample_model(batch_dict)
+            # viz.image(batch_dict['sample_pw_feature']['e3'][0,0,...].clamp(0,1))
+            # feature fusion
+            rv_fusion = self.fusion(batch_dict['sample_pw_feature'])
 
-        # feature fusion
-        rv_fusion = self.fusion(encode_range_dict, self.proj)
+        if self.model_version == 'pillarNet_range':
+            coord = batch_dict['points'][:,:4]
+            points = batch_dict['points'][:,1:]
+            range_pw_features = self.range_embed(points)
 
-        # creat seg features
-        bev_pw = self.proj.g2p_bev(encode_bev)
-        range_pw = self.proj.g2p_range(encode_range)
-
-        c_bev = encode_bev.shape[1]
-        c_range = encode_range.shape[1]
-
-        cmplt_bev_pw = encode_bev.new_zeros([coord.shape[0], c_bev])
-        cmplt_bev_pw[keep_bev] = bev_pw 
-
-        cmplt_range_pw = encode_range.new_zeros([coord.shape[0], c_range])
-        cmplt_range_pw[keep_range] = range_pw
-
-        sem_pw_features = torch.cat([cmplt_bev_pw, cmplt_range_pw], dim = -1)
-        sem_pred = self.classifier(sem_pw_features)
-        batch_dict['sem_pred'] = sem_pred
+            keep_range = self.proj.init_range_coord(coord)[1]
+            ori_range = self.proj.p2g_range(range_pw_features[keep_range], batch_size)
+            # 2D learning
+            encode_range, encode_range_dict = self.range_AL_2D(ori_range)
+            encode_range_dict['coord'] = coord
+            # feature fusion
+            rv_fusion = self.fusion(encode_range_dict, self.proj)
 
         # creat det features
         det_features = torch.cat([encode_bev_dict['d0'], rv_fusion], dim = 1)
         batch_dict['spatial_features'] = det_features
+
+        # viz.image(ori_bev[0,0,...].clamp(0,1), opts={'title': 'ori_bev1'})
+        # viz.image(ori_bev[0,1,...].clamp(0,1), opts={'title': 'ori_bev2'})
+
+        # viz.image(encode_bev_dict['e1'][0,0,...].clamp(0,1), opts={'title': 'encode_bev_e1'})
+        # viz.image(encode_bev_dict['e2'][0,0,...].clamp(0,1), opts={'title': 'encode_bev_e2'})
+        # viz.image(encode_bev_dict['e3'][0,0,...].clamp(0,1), opts={'title': 'encode_bev_e3'})
+
+        # viz.image(encode_bev[0,0,...].clamp(0,1), opts={'title': 'encode_bev1'})
+        # viz.image(encode_bev[0,1,...].clamp(0,1), opts={'title': 'encode_bev2'})
+
+        # if hasattr(self,'sample_model'):
+        #     viz.image(batch_dict['sample_pw_feature']['e1'][0,0,...].clamp(0,1), opts={'title': 'sample_pw_feature'})
+        #     viz.image(batch_dict['sample_pw_feature']['e2'][0,0,...].clamp(0,1), opts={'title': 'sample_pw_feature'})
+        #     viz.image(batch_dict['sample_pw_feature']['e3'][0,0,...].clamp(0,1), opts={'title': 'sample_pw_feature'})
+
+        # viz.image(rv_fusion[0,1,...].clamp(0,1), opts={'title': 'rv_fusion'})
         
+
+            
+        if self.multi_task:
+            # creat seg features
+            # project & inv project
+            keep_bev = self.proj.init_bev_coord(coord)[1]
+            bev_pw = self.proj.g2p_bev(encode_bev)
+            range_pw = self.proj.g2p_range(encode_range)
+
+            c_bev = encode_bev.shape[1]
+            c_range = encode_range.shape[1]
+
+            cmplt_bev_pw = encode_bev.new_zeros([coord.shape[0], c_bev])
+            cmplt_bev_pw[keep_bev] = bev_pw 
+
+            cmplt_range_pw = encode_range.new_zeros([coord.shape[0], c_range])
+            cmplt_range_pw[keep_range] = range_pw
+
+            sem_pw_features = torch.cat([cmplt_bev_pw, cmplt_range_pw], dim = -1)
+            sem_pred = self.classifier(sem_pw_features)
+            batch_dict['sem_pred'] = sem_pred
+
         return batch_dict
         

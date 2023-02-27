@@ -49,7 +49,7 @@ DATA_CONFIG:
               WORLD_SCALE_RANGE: [0.95, 1.05]
 
 MODEL:
-    NAME: PAGNet
+    NAME: CenterPoint
 
     VFE:
         NAME: PillarVFE
@@ -59,35 +59,23 @@ MODEL:
         NUM_FILTERS: [64, 64]
 
     MAP_TO_BEV:
+        # NAME: PointPillarScatter
+        # NUM_BEV_FEATURES: 64
+        # MAP_TO_BEV:
         NAME: Sparse2BEV
         NUM_BEV_FEATURES: &NUM_BEV_FEATURES 64
 
-    BACKBONE_3D:
-        NAME: AL_3D
-        NUM_RANGE_FEATURES: 16
-        NUM_BEV_FEATURES: *NUM_BEV_FEATURES
-
-        NUM_RANGE_SEG_FEATURES: 64
-        NUM_BEV_SEG_FEATURES: 64
-
-        NUM_FUSION_FEATURES: 128
-
-        SEM_CLS: 4
-        PC_FOV: [-16.0, 15.0, -180, 180]  # degrees instead of radians, horizontal field-of-view are not be used
-        BEV_SHAPE: [496, 432]
-        RANGE_SHAPE: [32, 2048]
-        POINT_CLOUD_RANGE: *POINT_CLOUD_RANGE
-
     BACKBONE_2D:
-        NAME: RB_Fusion
-
-        BEV_DIM: 256
-        RANGE_DIM: 64
+        NAME: BaseBEVBackbone
+        LAYER_NUMS: [3, 5, 5]
+        LAYER_STRIDES: [2, 2, 2]
+        NUM_FILTERS: [64, 128, 256]
+        UPSAMPLE_STRIDES: [0.5, 1, 2]
+        NUM_UPSAMPLE_FILTERS: [128, 128, 128]
 
     DENSE_HEAD:
         NAME: CenterHeadIoU
         CLASS_AGNOSTIC: False
-        SEM_TASK: False
 
         CLASS_NAMES_EACH_HEAD: [
             ['Car'], ['Pedestrian'], ['Cyclist']
@@ -95,7 +83,6 @@ MODEL:
 
         SHARED_CONV_CHANNEL: 64
         USE_BIAS_BEFORE_NORM: True
-        USE_DET_FOR_SEM: False
         NUM_HM_CONV: 2
         SEPARATE_HEAD_CFG:
             HEAD_ORDER: ['center', 'center_z', 'dim', 'rot']
@@ -118,17 +105,14 @@ MODEL:
                 'cls_weight': 1.0,
                 'loc_weight': 0.25,
                 'iou_weight': 1.0,
-                'sem_weight': 3,
-                'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                # 'sem_ignore': [0], 
-                'sem_cs_weight': dynamic-log,
+                'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
 
         POST_PROCESSING:
             SCORE_THRESH: 0.1
             POST_CENTER_LIMIT_RANGE: [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
             MAX_OBJ_PER_SAMPLE: 500
-            RECTIFIER: [0.7, 0.65, 0.53]
+            RECTIFIER: [0.5, 0.5, 0.5]
             NMS_CONFIG:
                 NMS_NAME: class_specific_nms
                 NMS_TYPE: nms_gpu
@@ -144,7 +128,7 @@ MODEL:
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 4
-    NUM_EPOCHS: 150
+    NUM_EPOCHS: 100
 
     OPTIMIZER: adam_onecycle
     LR: 0.001

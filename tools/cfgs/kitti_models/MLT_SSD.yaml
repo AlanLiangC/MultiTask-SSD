@@ -1,89 +1,157 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
-DATA_CONFIG:
+DATA_CONFIG: 
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
     POINT_CLOUD_RANGE: &POINT_CLOUD_RANGE [0, -39.68, -3, 69.12, 39.68, 1]
     DATA_PROCESSOR:
-        -   NAME: mask_points_and_boxes_outside_range
-            REMOVE_OUTSIDE_BOXES: True
+        - NAME: mask_points_and_boxes_outside_range
+          REMOVE_OUTSIDE_BOXES: True
 
-        # -   NAME: sample_points
-        #     NUM_POINTS: {
-        #         'train': 16384,
-        #         'test': 16384
-        #     }
+        - NAME: shuffle_points
+          SHUFFLE_ENABLED: {
+            'train': True,
+            'test': False
+          }
 
-        -   NAME: shuffle_points
-            SHUFFLE_ENABLED: {
-                'train': True,
-                'test': False
-            }
+        - NAME: transform_points_to_voxels
+          VOXEL_SIZE: [0.16, 0.16, 4]
+          MAX_POINTS_PER_VOXEL: 32
+          MAX_NUMBER_OF_VOXELS: {
+            'train': 16000,
+            'test': 40000
+          }
 
-        - NAME: add_fake_sem_label
+        - NAME: sample_points
+          NUM_POINTS: {
+            'train': 16384,
+            'test': 16384
+          }
 
-        # - NAME: transform_points_to_voxels
-        #   VOXEL_SIZE: [0.16, 0.16, 4]
-        #   MAX_POINTS_PER_VOXEL: 32
-        #   MAX_NUMBER_OF_VOXELS: {
-        #     'train': 16000,
-        #     'test': 40000
-        #   }
+    DATA_AUGMENTOR:
+        DISABLE_AUG_LIST: ['placeholder']
+        AUG_CONFIG_LIST:
+            - NAME: gt_sampling
+              USE_ROAD_PLANE: True
+              DB_INFO_PATH:
+                  - kitti_dbinfos_train.pkl
+              PREPARE: {
+                 filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
+                 filter_by_difficulty: [-1],
+              }
+
+              SAMPLE_GROUPS: ['Car:15','Pedestrian:15', 'Cyclist:15']
+              NUM_POINT_FEATURES: 4
+              DATABASE_WITH_FAKELIDAR: False
+              REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
+              LIMIT_WHOLE_SCENE: False
+
+            - NAME: random_world_flip
+              ALONG_AXIS_LIST: ['x']
+
+            - NAME: random_world_rotation
+              WORLD_ROT_ANGLE: [-0.78539816, 0.78539816]
+
+            - NAME: random_world_scaling
+              WORLD_SCALE_RANGE: [0.95, 1.05]
 
 MODEL:
-    NAME: IASSD
+    NAME: PAGNet
+
+    VFE:
+        NAME: PillarVFE
+        WITH_DISTANCE: False
+        USE_ABSLOTE_XYZ: True
+        USE_NORM: True
+        NUM_FILTERS: [32, 32]
 
     MAP_TO_BEV:
-        NAME: MLTSSD_encoding
-        MLPS: [16]
-        SEM_MLPS: [8,16]
-        DET_MLPS: [8,16]
+        NAME: Sparse2BEV
+        NUM_BEV_FEATURES: &NUM_BEV_FEATURES 32
 
-        NPOINT: 16384
-        SEM_CLASS_NUM: 4
-        CLASSIFIER: [32,16]
-        VOXEL_SIZE: [0.16, 0.16, 1]
-        POINT_CLOUD_RANGE: *POINT_CLOUD_RANGE
-
-     
     BACKBONE_3D:
-        NAME: MLTSSD_Backbone
-        SA_CONFIG:
-            # Sampling setting:
-            NPOINT_LIST: [[3072], [1024], [512], [256], [-1], [256]]
-            SOFT_FG_LIST: [[1024], [], [], [], [], []]
-            SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
-            SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
-            # Group and Abstraction setting:
-            RADIUS_LIST: [[0.2,0.8], [0.8,1.6], [1.6,4.8], [], [], [4.8, 6.4]]
-            NSAMPLE_LIST: [[16,32], [16,32], [16,32], [], [], [16, 32]]            
-            MLPS: [[[16,16,32],  [32,32,64]],
-                   [[64,64,128],  [64,96,128]],
-                   [[128,128,256],  [128,256,256]],
-                   [],
-                   [128],
-                   [[256,256,512], [256,512,1024]]]
-            
-            LAYER_TYPE: ['SA_Layer', 'SA_Layer', 'SA_Layer', 'SA_Layer', 'Vote_Layer', 'SA_Layer']
-            DILATED_GROUP: [False, False, False, False, False, False]            
-            AGGREGATION_MLPS: [[64], [128], [256], [256], [], [512]]
-            # Instance-aware setting:
-            CONFIDENCE_MLPS: [[], [128], [256], [], [], []]
+        NAME: AL_3D
+        MODEL_VERSION: pillarNet_pw
+        MULTI_TASK: False
+        NUM_BEV_FEATURES: *NUM_BEV_FEATURES
+        POINT_CLOUD_RANGE: *POINT_CLOUD_RANGE
+        NUM_FUSION_FEATURES: 128
+        # NUM_RANGE_FEATURES: 16
+        
 
-            LAYER_INPUT: [0, 1, 2, 3, 4, 3]
-            CTR_INDEX: [-1, -1, -1, -1, -1, 5]
-            MAX_TRANSLATE_RANGE: [3.0, 3.0, 2.0]
-            # SAVE_SAMPLE_LIST: True
+        # NUM_RANGE_SEG_FEATURES: 64
+        # NUM_BEV_SEG_FEATURES: 64
 
-    POINT_HEAD:
-        NAME: MLT_SSD_Head
-        CLS_FC: [256, 256]
-        REG_FC: [256, 256]
+        
+
+        # SEM_CLS: 4
+        # PC_FOV: [-16.0, 15.0, -180, 180]  # degrees instead of radians, horizontal field-of-view are not be used
+        # BEV_SHAPE: [496, 432]
+        # RANGE_SHAPE: [32, 2048]
+        
+
+        SAMPLE_PW_FEATURE:
+            SA_CONFIG:
+                # Sampling setting:
+                NPOINT_LIST: [[4096], [1024], [512]]
+                SAMPLE_RANGE_LIST: [[-1], [-1], [-1]]
+                SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['cls_aware']]
+                # Group and Abstraction setting:
+                RADIUS_LIST: [[0.2,0.8], [0.8,1.6], [1.6,4.8]]
+                NSAMPLE_LIST: [[16,32], [16,32], [16,32]]            
+                MLPS: [[[8,8,16],  [16,16,32]],
+                    [[32,32,64],  [32,48,64]],
+                    [[64,64,128],  [64,128,128]]]
+                
+                LAYER_TYPE: ['SA_Layer', 'SA_Layer', 'SA_Layer']
+                DILATED_GROUP: [False, False, False]            
+                AGGREGATION_MLPS: [[32], [64], [128]]
+                # Instance-aware setting:
+                CONFIDENCE_MLPS: [[], [128], []]
+
+                LAYER_INPUT: [0, 1, 2]
+                CTR_INDEX: [-1, -1, -1]
+                MAX_TRANSLATE_RANGE: [3.0, 3.0, 2.0]
+                # SAVE_SAMPLE_LIST: True
+
+
+    BACKBONE_2D:
+        NAME: RB_Fusion
+
+        BEV_DIM: 128
+        RANGE_DIM: 64
+
+    DENSE_HEAD:
+        NAME: CenterHeadIoU
         CLASS_AGNOSTIC: False
-        USE_POINT_FEATURES_BEFORE_FUSION: False
+        SEM_TASK: False
+
+        CLASS_NAMES_EACH_HEAD: [
+            ['Car'], ['Pedestrian'], ['Cyclist']
+        ]
+
+        SHARED_CONV_CHANNEL: 64
+        USE_BIAS_BEFORE_NORM: True
+        USE_DET_FOR_SEM: False
+        NUM_HM_CONV: 2
+        SEPARATE_HEAD_CFG:
+            HEAD_ORDER: ['center', 'center_z', 'dim', 'rot']
+            HEAD_DICT: {
+                'center': {'out_channels': 2, 'num_conv': 2},
+                'center_z': {'out_channels': 1, 'num_conv': 2},
+                'dim': {'out_channels': 3, 'num_conv': 2},
+                'rot': {'out_channels': 2, 'num_conv': 2},
+                'iou': {'out_channels': 1, 'num_conv': 2},
+            }
+
+        TARGET_ASSIGNER_CONFIG:
+            FEATURE_MAP_STRIDE: 4
+            NUM_MAX_OBJS: 500
+            GAUSSIAN_OVERLAP: 0.1
+            MIN_RADIUS: 2
+
         TARGET_CONFIG:
             INS_AWARE_ASSIGN: True
             GT_EXTRA_WIDTH: [0.2, 0.2, 0.2]
-            SEM_IGNORE: []
            
             ASSIGN_METHOD:
                 NAME: 'extend_gt'
@@ -103,7 +171,7 @@ MODEL:
             }
 
         LOSS_CONFIG:
-            # Ref: 'WeightedBinaryCrossEntropy', 'WeightedCrossEntropy', 'FocalLoss'
+
             LOSS_CLS: WeightedCrossEntropy
             LOSS_REG: WeightedSmoothL1Loss
             LOSS_INS: WeightedCrossEntropy
@@ -114,38 +182,47 @@ MODEL:
             CENTERNESS_REGULARIZATION: True
             CENTERNESS_REGULARIZATION_SA: True
             LOSS_WEIGHTS: {
-                'ins_aware_weight': [2, 1.0, 1.0, 1.0],
+                'ins_aware_weight': [0, 1.0, 1.0],
                 'vote_weight': 1.0,
                 'point_cls_weight': 1.0,
                 'point_box_weight': 1.0,
                 'corner_weight': 1.0,
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                'dir_weight': 0.2
+                'dir_weight': 0.2,
+                'cls_weight': 1.0,
+                'loc_weight': 0.25,
+                'iou_weight': 1.0,
+                'sem_weight': 3,
+                'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                # 'sem_ignore': [0], 
+                'sem_cs_weight': dynamic-log,
+
             }
 
+        POST_PROCESSING:
+            SCORE_THRESH: 0.1
+            POST_CENTER_LIMIT_RANGE: [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
+            MAX_OBJ_PER_SAMPLE: 500
+            RECTIFIER: [0.7, 0.65, 0.53]
+            NMS_CONFIG:
+                NMS_NAME: class_specific_nms
+                NMS_TYPE: nms_gpu
+                NMS_THRESH: 0.01
+                NMS_PRE_MAXSIZE: 500
+                NMS_POST_MAXSIZE: 80
 
     POST_PROCESSING:
-        RECALL_MODE: 'normal'  # 'normal'(default), 'detail', 'speed'(no recall info)
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
-        SCORE_THRESH: 0.1
-        OUTPUT_RAW_SCORE: False
 
         EVAL_METRIC: kitti
 
-        NMS_CONFIG:
-            MULTI_CLASSES_NMS: False
-            NMS_TYPE: nms_gpu
-            NMS_THRESH: 0.01
-            NMS_PRE_MAXSIZE: 4096
-            NMS_POST_MAXSIZE: 500
-
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 2
+    BATCH_SIZE_PER_GPU: 4
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle
-    LR: 0.01
+    LR: 0.001
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 
@@ -159,4 +236,4 @@ OPTIMIZATION:
     LR_WARMUP: False
     WARMUP_EPOCH: 1
 
-    GRAD_NORM_CLIP: 10
+    GRAD_NORM_CLIP: 35

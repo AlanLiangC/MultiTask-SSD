@@ -1,7 +1,7 @@
 from pcdet.models.backbones_2d import convmlp
 import torch
 import torch.nn as nn
-
+import numpy as np
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -277,10 +277,35 @@ class RB_Fusion(nn.Module):
         
 
         
+def space_to_depth(in_tensor, down_scale):
+    Batchsize, Ch, Height, Width = in_tensor.size()
+    out_channel = Ch * (down_scale ** 2)
+    out_Height = Height // down_scale
+    out_Width = Width // down_scale
+
+    in_tensor_view = in_tensor.view(Batchsize * Ch, out_Height, down_scale, out_Width, down_scale)
+    output = in_tensor_view.permute(0, 2, 4, 1, 3).contiguous().view(Batchsize, out_channel, out_Height, out_Width)
+    return output
 
 
 
-        
+def get_random_train_idx(sem_repeat_num, det_repeat_num, sample_num):
+    cycle_num = sample_num // (sem_repeat_num + det_repeat_num)
+    last_num = sample_num % (sem_repeat_num + det_repeat_num)
+    zeros = torch.zeros(det_repeat_num)
+    ones = torch.ones(sem_repeat_num)
+    cycle = torch.cat([zeros, ones], dim = -1)
+    train_idx = cycle.repeat(cycle_num)
+    if last_num == 0:
+        assert train_idx.shape[0] == sample_num
+        return train_idx
+    last_idx = torch.zeros(last_num)
+    last_idx[last_num // 2:] = 1
+    shuffle_idx = np.random.permutation(last_num)
+    last_idx = last_idx[shuffle_idx]
+    train_idx = torch.cat([train_idx, last_idx], dim = -1)
+    assert train_idx.shape[0] == sample_num
+    return train_idx
 
 
 
@@ -307,8 +332,26 @@ if __name__ == "__main__":
     # output = model(data)
     # print(output.shape)
 
-    model = RB_Fusion()
-    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f'Total number of params: {n_parameters}')
-    output = model(data)
-    print(output.shape)
+    # model = RB_Fusion()
+    # n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    # print(f'Total number of params: {n_parameters}')
+    # output = model(data)
+    # print(output.shape)
+
+    # from torch.nn import functional as F 
+
+
+    # x = torch.Tensor([[[[  1,  2,  3,  4],
+    #                     [  6,  7,  8,  9],
+    #                     [ 11, 12, 13, 14],
+    #                     [ 16, 17, 18, 19]]]])
+    # result = F.unfold(x, 2,stride=2) 
+    # print(result)
+    # print(result.size())
+    # print(result.view(1,4,2,2))
+
+    # print(space_to_depth(x,2))
+
+    result = get_random_train_idx(15,45,20000)
+    print(result.shape)
+

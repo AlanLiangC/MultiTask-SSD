@@ -1,6 +1,9 @@
 # from pcdet.models.backbones_2d import convmlp
 import torch
 import torch.nn as nn
+# from visdom import Visdom
+
+# viz = Visdom(server='http://127.0.0.1', port=8097)
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -107,6 +110,17 @@ class EncBlock(nn.Module):
 
         output = self.pool(output) # [4, 128, 256, 256]
 
+        # viz.image(input_data[0,1,...].clamp(0,1), opts={'title': 'input_data'})
+        # viz.image(output_1[0,1,...].clamp(0,1), opts={'title': 'output_1'})
+        # viz.image(output_2[0,1,...].clamp(0,1), opts={'title': 'output_2'})
+        # viz.image(output_3[0,1,...].clamp(0,1), opts={'title': 'output_3'})
+
+        # viz.image(output_123_1[0,1,...].clamp(0,1), opts={'title': 'output_123_1'})
+        # viz.image(output_1_1[0,1,...].clamp(0,1), opts={'title': 'output_1_1'})
+        # viz.image((output_123_1 + output_1_1)[0,1,...].clamp(0,1), opts={'title': 'output'})
+        # viz.image(output[0,1,...].clamp(0,1), opts={'title': 'output'})
+
+
         return output
 
 class DecBlock(nn.Module):
@@ -170,20 +184,24 @@ class DecBlock(nn.Module):
         
 
 class CP_Unet(nn.Module): # layers_num = 4 in our project
-    def __init__(self, input_channels, layers_num, output_channels) -> None:
+    def __init__(self, input_channels, layers_num, output_channels = None, unet = True) -> None:
         super().__init__()
         self.layers = [int(input_channels * 2**i) for i in range(layers_num)]
+        self.unet = unet
 
         self.pre_conv = BasicBlock(inplanes=input_channels, planes=input_channels)
-        self.out_conv = nn.Conv2d(input_channels, output_channels, kernel_size=1, stride=1, padding=0)
         self.encode_blocks = nn.ModuleList()
         self.decode_blocks = nn.ModuleList()
         self.basic_blocks = nn.ModuleList()
+        if unet:
+            self.out_conv = nn.Conv2d(input_channels, output_channels, kernel_size=1, stride=1, padding=0)
+
 
         for i in range(len(self.layers) - 1):
             self.encode_blocks.append(EncBlock(input_channels=self.layers[i]))
-            self.decode_blocks.append(DecBlock(input_channels=self.layers[0-1-i]))
-            self.basic_blocks.append(BasicBlock(inplanes=self.layers[-1-i], planes=self.layers[-2-i]))
+            if unet or i == 0:
+                self.decode_blocks.append(DecBlock(input_channels=self.layers[0-1-i]))
+                self.basic_blocks.append(BasicBlock(inplanes=self.layers[-1-i], planes=self.layers[-2-i]))
     
     def forward(self,x):
         e0 = self.pre_conv(x) # [4, 16, 512, 512]
@@ -192,19 +210,29 @@ class CP_Unet(nn.Module): # layers_num = 4 in our project
         e2 = self.encode_blocks[1](e1) # [4, 64, 128, 128]
         e3 = self.encode_blocks[2](e2) # [4, 128, 64, 64]
 
+        # viz.image(e1[0,1,...].clamp(0,1), opts={'title': 'e1'})
+        # viz.image(e2[0,1,...].clamp(0,1), opts={'title': 'e2'})
+        # viz.image(e3[0,1,...].clamp(0,1), opts={'title': 'e3'})
+        
+
         d0 = self.decode_blocks[0](e3) # [4, 64, 128, 128]
+        # viz.image(d0[0,1,...].clamp(0,1), opts={'title': 'd0'})
         d0 = torch.cat([e2, d0], dim = 1) # [4, 128, 128, 128]
         d0 = self.basic_blocks[0](d0) # [4, 64, 128, 128]
+        # viz.image(d0[0,1,...].clamp(0,1), opts={'title': 'd0'})
+        out = d0
 
-        d1 = self.decode_blocks[1](d0) # [4, 32, 256, 256]
-        d1 = torch.cat([e1, d1], dim = 1) # [4, 64, 256, 256]
-        d1 = self.basic_blocks[1](d1) # [4, 32, 256, 256]
+        if self.unet:
 
-        d2 = self.decode_blocks[2](d1) # [4, 16, 512, 512]
-        d2 = torch.cat([e0, d2], dim = 1) # [4, 32, 512, 512]
-        d2 = self.basic_blocks[2](d2) # [4, 16, 512, 512]
+            d1 = self.decode_blocks[1](d0) # [4, 32, 256, 256]
+            d1 = torch.cat([e1, d1], dim = 1) # [4, 64, 256, 256]
+            d1 = self.basic_blocks[1](d1) # [4, 32, 256, 256]
 
-        out = self.out_conv(d2)
+            d2 = self.decode_blocks[2](d1) # [4, 16, 512, 512]
+            d2 = torch.cat([e0, d2], dim = 1) # [4, 32, 512, 512]
+            d2 = self.basic_blocks[2](d2) # [4, 16, 512, 512]
+
+            out = self.out_conv(d2)
 
         out_dict = {}
         out_dict.update({
@@ -213,6 +241,8 @@ class CP_Unet(nn.Module): # layers_num = 4 in our project
             'e3': e3,
             'd0': d0
         })
+
+        
 
         return out, out_dict
 
