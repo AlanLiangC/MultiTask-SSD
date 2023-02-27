@@ -41,7 +41,7 @@ class Encoder_x(nn.Module):
 
 
     def forward(self, input):
-        output = self.fe(input)
+        output = self.fe(input) # input [64, 4, 512] 
         # print(output.size())
 
         mu = self.fc1(output)
@@ -63,14 +63,14 @@ class Encoder_xy(nn.Module):
 
 
     def forward(self, input, y):
-        output = self.fe(input)
+        output = self.fe(input) # input [64, 4, 512] output [64, 512] y [64, 8]
         # print(output.size())
 
         # todo: add y as input, y should be processed
         output = torch.cat([output, y], axis=1)
 
-        mu = self.fc1(output)
-        logvar = self.fc2(output)
+        mu = self.fc1(output) # [64, 8]
+        logvar = self.fc2(output) # [64, 8]
         dist = Independent(Normal(loc=mu, scale=torch.exp(logvar)+3e-22), 1)
         # print("### in posterior, dist variance", dist.variance.min(), dist.variance.max(), torch.exp(logvar).min(), torch.exp(logvar).max())
         # print(output.size())
@@ -204,10 +204,10 @@ class Generator(nn.Module):
 
         if self.training:
             try:
-                self.posterior, muxy, logvarxy = self.xy_encoder(x, y)
+                self.posterior, muxy, logvarxy = self.xy_encoder(x, y) # Recognition Network
             except:
                 import pdb;pdb.set_trace()
-            self.prior, mux, logvarx = self.x_encoder(x)
+            self.prior, mux, logvarx = self.x_encoder(x) # Prior Network
             # print("###self.prior min,max", self.prior.variance.min(), self.prior.variance.max())
             # print("###self.posterior min,max", self.posterior.variance.min(), self.posterior.variance.max())
             lattent_loss = torch.mean(self.kl_divergence(self.posterior, self.prior))

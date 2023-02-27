@@ -7,9 +7,7 @@ import tqdm
 from torch import nn
 from pcdet.models import load_data_to_gpu
 from pcdet.utils import common_utils
-
 from pcdet.utils.loss_utils import rbbox_to_corners, rinter_area_compute
-
 
 def iou3d(gboxes, qboxes):
     '''

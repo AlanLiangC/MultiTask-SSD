@@ -84,7 +84,6 @@ MODEL:
             POST_CENTER_LIMIT_RANGE: [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
             MAX_OBJ_PER_SAMPLE: 500
             NMS_CONFIG:
-                NMS_NAME: class_specific_nms
                 NMS_TYPE: nms_gpu
                 NMS_THRESH: 0.2
                 NMS_PRE_MAXSIZE: 1000
