@@ -427,6 +427,103 @@ class KittiDataset(DatasetTemplate):
         return data_dict
 
 
+# This class is for visible gt 
+class DemoDatasetV2(DatasetTemplate):
+    def __init__(self, dataset_cfg, class_names, training=True, root_path=None, logger=None):
+        """
+        Args:
+            root_path:
+            dataset_cfg:
+            class_names:
+            training:
+            logger:
+        """
+        super().__init__(dataset_cfg=dataset_cfg, class_names=class_names, training=training, root_path=root_path, logger=logger)
+
+
+        self.split = self.dataset_cfg.DATA_SPLIT[self.mode]
+        self.root_split_path = self.root_path / ('training' if self.split != 'test' else 'testing')
+
+        split_dir = self.root_path / 'ImageSets' / (self.split + '.txt')
+        self.sample_id_list = [x.strip() for x in open(split_dir).readlines()] if split_dir.exists() else None
+
+        self.kitti_infos = []
+        self.include_kitti_data(self.mode)
+
+    def include_kitti_data(self, mode):
+        if self.logger is not None:
+            self.logger.info('Loading KITTI dataset')
+        kitti_infos = []
+
+        for info_path in self.dataset_cfg.INFO_PATH[mode]:
+            info_path = self.root_path / info_path
+            if not info_path.exists():
+                continue
+            with open(info_path, 'rb') as f:
+                infos = pickle.load(f)
+                kitti_infos.extend(infos)
+
+        self.kitti_infos.extend(kitti_infos)
+
+        if self.logger is not None:
+            self.logger.info('Total samples for KITTI dataset: %d' % (len(kitti_infos)))
+
+    def set_split(self, split):
+        super().__init__(
+            dataset_cfg=self.dataset_cfg, class_names=self.class_names, training=self.training, root_path=self.root_path, logger=self.logger
+        )
+        self.split = split
+        self.root_split_path = self.root_path / ('training' if self.split != 'test' else 'testing')
+
+        split_dir = self.root_path / 'ImageSets' / (self.split + '.txt')
+        self.sample_id_list = [x.strip() for x in open(split_dir).readlines()] if split_dir.exists() else None
+
+    def get_lidar(self, idx):
+        lidar_file = self.root_split_path / 'velodyne' / ('%s.bin' % idx)
+        assert lidar_file.exists()
+        return np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 4)
+
+    def get_calib(self, idx):
+        calib_file = self.root_split_path / 'calib' / ('%s.txt' % idx)
+        assert calib_file.exists()
+        return calibration_kitti.Calibration(calib_file)
+
+    def __len__(self):
+
+        return len(self.kitti_infos)
+
+    def __getitem__(self, index):
+
+        return index
+    
+    def getitem(self, index):
+        data_dict = {}
+        info = copy.deepcopy(self.kitti_infos[index])
+
+        sample_idx = info['point_cloud']['lidar_idx']
+        calib = self.get_calib(sample_idx)
+        points = self.get_lidar(sample_idx)
+        # data_dict['lidar_file'] = self.root_split_path / 'velodyne' / ('%s.bin' % sample_idx)
+        data_dict['points'] = points
+
+        if 'annos' in info:
+            annos = info['annos']
+            annos = common_utils.drop_info_with_name(annos, name='DontCare')
+            loc, dims, rots = annos['location'], annos['dimensions'], annos['rotation_y']
+            gt_names = annos['name']
+            gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
+            gt_boxes_lidar = box_utils.boxes3d_kitti_camera_to_lidar(gt_boxes_camera, calib)
+
+            data_dict['gt_names'] = gt_names
+            data_dict['gt_boxes'] = gt_boxes_lidar
+
+        data_dict = self.prepare_data(data_dict)
+        return data_dict
+
+
+
+
+
 def create_kitti_infos(dataset_cfg, class_names, data_path, save_path, workers=4):
     dataset = KittiDataset(dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path, training=False)
     train_split, val_split = 'train', 'val'
