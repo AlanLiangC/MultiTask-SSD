@@ -27,7 +27,7 @@ DATA_CONFIG:
                 'test': False
             }
 
-        -   NAME: add_fake_sem_label
+        # -   NAME: add_fake_sem_label
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 16
