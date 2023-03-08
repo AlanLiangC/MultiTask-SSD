@@ -1,4 +1,3 @@
-import _init_path
 import argparse
 import datetime
 import glob
@@ -13,22 +12,21 @@ from tensorboardX import SummaryWriter
 
 from eval_utils import eval_utils
 from pcdet.config import cfg, cfg_from_list, cfg_from_yaml_file, log_config_to_file
-from pcdet.datasets import build_dataloader
+# from pcdet.datasets import build_dataloader
 from pcdet.models import build_network
 from pcdet.utils import common_utils
 
-import warnings
-warnings.filterwarnings('ignore')
-warnings.filterwarnings('ignore', category=DeprecationWarning)
+from dataset import build_dataloader
+from model import Generate_center
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default='./cfgs/kitti_models/PAGNet.yaml', help='specify the config for training')
+    parser.add_argument('--cfg_file', type=str, default='./cfgs/exp20_gen.yaml', help='specify the config for training')
 
     parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
-    parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
+    parser.add_argument('--workers', type=int, default=1, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
-    parser.add_argument('--ckpt', type=str, default='../output/cfgs/kitti_models/IA-SSD/default/ckpt/checkpoint_epoch_80.pth', help='checkpoint to start from')
+    parser.add_argument('--ckpt', type=str, default='./output/exp20_gen/fold_1/ckpt/checkpoint_epoch_391.pth', help='checkpoint to start from')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
@@ -152,7 +150,7 @@ def main():
         assert args.batch_size % total_gpus == 0, 'Batch size should match the number of gpus'
         args.batch_size = args.batch_size // total_gpus
 
-    output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG / args.extra_tag
+    output_dir = Path(cfg.ROOT_DIR) / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG / args.extra_tag
     output_dir.mkdir(parents=True, exist_ok=True)
 
     eval_output_dir = output_dir / 'eval'
@@ -191,7 +189,9 @@ def main():
         dist=dist_test, workers=args.workers, logger=logger, training=False
     )
 
-    model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=test_set)
+    input_channels = cfg.MODEL.get('INPUT_CHANNELS', 4)
+    model = Generate_center(cfg.MODEL, input_channels=input_channels, scale=1)
+    
     with torch.no_grad():
         if args.eval_all:
             repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir, dist_test=dist_test)
@@ -200,6 +200,4 @@ def main():
 
 
 if __name__ == '__main__':
-    # os.environ["CUDA_VISIBLE_DEVIDES"] = "1"
-    # torch.cuda.set_device(1)
     main()

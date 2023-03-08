@@ -2,16 +2,18 @@ CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
-    POINT_CLOUD_RANGE: &POINT_CLOUD_RANGE [0, -39.68, -3, 69.12, 39.68, 1]
+
     DATA_PROCESSOR:
         -   NAME: mask_points_and_boxes_outside_range
             REMOVE_OUTSIDE_BOXES: True
 
-        # -   NAME: sample_points
-        #     NUM_POINTS: {
-        #         'train': 16384,
-        #         'test': 16384
-        #     }
+        # -   NAME: add_fake_sem_label
+
+        -   NAME: sample_points
+            NUM_POINTS: {
+                'train': 16384,
+                'test': 16384
+            }
 
         -   NAME: shuffle_points
             SHUFFLE_ENABLED: {
@@ -19,28 +21,18 @@ DATA_CONFIG:
                 'test': False
             }
 
-        - NAME: add_fake_sem_label
-
-        # - NAME: transform_points_to_voxels
-        #   VOXEL_SIZE: [0.16, 0.16, 4]
-        #   MAX_POINTS_PER_VOXEL: 32
-        #   MAX_NUMBER_OF_VOXELS: {
-        #     'train': 16000,
-        #     'test': 40000
-        #   }
+        # -   NAME: add_fake_sem_label
 
 MODEL:
     NAME: IASSD
 
     MAP_TO_BEV:
         NAME: PAGNet_encoding
-        MLPS: [16]
-        NPOINT: 16384
-        SEM_CLASS_NUM: 4
-        CLASSIFIER: [32,16]
-        VOXEL_SIZE: [0.16, 0.16, 1]
-        POINT_CLOUD_RANGE: *POINT_CLOUD_RANGE
-
+        _BASE_CONFIG_: ../surface_uncertainty/cfgs/sf_unc.yaml
+        CKPT: ../surface_uncertainty/output/cfgs/sf_unc/V3/ckpt/checkpoint_epoch_400.pth
+        NUM_BEV_FEATURES: &NUM_BEV_FEATURES 1
+        TOPK: 4096
+        
      
     BACKBONE_3D:
         NAME: PAGNet_Backbone
@@ -48,7 +40,7 @@ MODEL:
             # Sampling setting:
             NPOINT_LIST: [[4096], [1024], [512], [256], [-1], [256]]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
-            SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
+            SAMPLE_METHOD_LIST: &sample_method_list [['S-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
             # Group and Abstraction setting:
             RADIUS_LIST: [[0.2,0.8], [0.8,1.6], [1.6,4.8], [], [], [4.8, 6.4]]
             NSAMPLE_LIST: [[16,32], [16,32], [16,32], [], [], [16, 32]]            
@@ -79,7 +71,6 @@ MODEL:
         TARGET_CONFIG:
             INS_AWARE_ASSIGN: True
             GT_EXTRA_WIDTH: [0.2, 0.2, 0.2]
-            SEM_IGNORE: []
            
             ASSIGN_METHOD:
                 NAME: 'extend_gt'
@@ -110,7 +101,7 @@ MODEL:
             CENTERNESS_REGULARIZATION: True
             CENTERNESS_REGULARIZATION_SA: True
             LOSS_WEIGHTS: {
-                'ins_aware_weight': [2, 1.0, 1.0, 1.0],
+                'ins_aware_weight': [0, 1.0, 1.0],
                 'vote_weight': 1.0,
                 'point_cls_weight': 1.0,
                 'point_box_weight': 1.0,
@@ -137,8 +128,8 @@ MODEL:
 
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 2
-    NUM_EPOCHS: 82
+    BATCH_SIZE_PER_GPU: 4
+    NUM_EPOCHS: 90
 
     OPTIMIZER: adam_onecycle
     LR: 0.01

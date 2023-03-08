@@ -64,7 +64,58 @@ def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scor
         pts.colors = open3d.utility.Vector3dVector(point_colors)
 
     if gt_boxes is not None:
-        vis = draw_box(vis, gt_boxes, (0, 0, 1))
+        vis = draw_box(vis, gt_boxes, (1, 0, 0))
+
+    if ref_boxes is not None:
+        vis = draw_box(vis, ref_boxes, (0, 1, 0), ref_labels, ref_scores)
+
+    vis.run()
+    vis.destroy_window()
+
+def draw_surface_scenes(points, center_pred, topk, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scores=None, point_colors=None, draw_origin=True):
+    if isinstance(points, torch.Tensor):
+        points = points.cpu().numpy()
+    if isinstance(center_pred, torch.Tensor):
+        center_pred = center_pred.cpu().numpy()
+    if isinstance(topk, torch.Tensor):
+        topk = topk.cpu().numpy()
+    if isinstance(gt_boxes, torch.Tensor):
+        gt_boxes = gt_boxes.cpu().numpy()
+    if isinstance(ref_boxes, torch.Tensor):
+        ref_boxes = ref_boxes.cpu().numpy()
+
+    vis = open3d.visualization.Visualizer()
+    vis.create_window()
+
+    vis.get_render_option().point_size = 1.0
+    vis.get_render_option().background_color = np.zeros(3)
+
+    # draw origin
+    if draw_origin:
+        axis_pcd = open3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0, origin=[0, 0, 0])
+        vis.add_geometry(axis_pcd)
+
+    pts = open3d.geometry.PointCloud()
+    pts.points = open3d.utility.Vector3dVector(points[:, :3])
+
+    # center
+    center = open3d.geometry.PointCloud()
+    center.points = open3d.utility.Vector3dVector(center_pred[:, :3])
+    center_color = np.zeros((points.shape[0], 3))
+    center_color[:,0] = 1
+    center.colors = open3d.utility.Vector3dVector(center_color)
+
+    vis.add_geometry(pts)
+    vis.add_geometry(center)
+    if point_colors is None:
+        point_colors = np.ones((points.shape[0], 3))
+        point_colors[topk,2] = 0
+        pts.colors = open3d.utility.Vector3dVector(point_colors)
+    else:
+        pts.colors = open3d.utility.Vector3dVector(point_colors)
+
+    if gt_boxes is not None:
+        vis = draw_box(vis, gt_boxes, (1, 0, 0))
 
     if ref_boxes is not None:
         vis = draw_box(vis, ref_boxes, (0, 1, 0), ref_labels, ref_scores)

@@ -285,6 +285,48 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
                 elif 'D-FPS' in sample_type or 'DFS' in sample_type:
                     sample_idx = pointnet2_utils.furthest_point_sample(xyz_tmp.contiguous(), npoint)
 
+                elif 'S-FPS' in sample_type or 'SFS' in sample_type:
+                    if kwargs.get('stds', None) is None:
+                        raise NotImplementedError
+
+                    # vis_points = []
+                    stds = kwargs['stds'].unsqueeze(dim = 1).contiguous()
+                    sample_idx = pointnet2_utils.furthest_point_sample(xyz_tmp.contiguous(), npoint)
+                    new_xyz = pointnet2_utils.gather_operation(xyz_flipped, sample_idx).transpose(1, 2).contiguous()
+
+                    # ###############VIS##################
+                    # vis_batch_points = xyz[0,...][sample_idx[0,...].long()]
+                    # stds_batch = stds.squeeze()[0,...][sample_idx[0,...].long()].unsqueeze(dim = -1)
+                    # vis_points.append(torch.cat([vis_batch_points, stds_batch], dim = -1))
+                    # ####################################
+                    
+                    ball_query = pointnet2_utils.BallQuery.apply
+                    idx = ball_query(0.2, 2, xyz, new_xyz) # [2, 4096, 16]
+
+                    grouping_operation = pointnet2_utils.GroupingOperation.apply
+                    grouped_features = grouping_operation(stds, idx).squeeze()
+
+                    stable_idx = torch.argmin(grouped_features, dim = -1).view(idx.shape[0],-1,1)
+
+                    sample_idx = torch.gather(idx,2,stable_idx).squeeze()
+
+                    # ###############VIS##################
+                    # vis_batch_points = xyz[0,...][sample_idx[0,...].long()]
+                    # stds_batch = stds.squeeze()[0,...][sample_idx[0,...].long()].unsqueeze(dim = -1)
+                    # vis_points.append(torch.cat([vis_batch_points, stds_batch], dim = -1))
+
+                    # import numpy as np
+                    # save_names = ['D-FPS','S-FPS']
+                    # for i in range(2):
+                    #     np.savetxt('../vspoints/kitti/{}.txt'.format(save_names[i]), vis_points[i].detach().cpu().numpy())
+
+                    # ####################################
+
+                    if sample_idx[0].unique().shape[0] < 3500:
+                        sample_idx = pointnet2_utils.furthest_point_sample(xyz_tmp.contiguous(), npoint)
+
+                    
+                    
                 elif 'F-FPS' in sample_type or 'FFS' in sample_type:
                     features_SSD = torch.cat([xyz_tmp, feature_tmp], dim=-1)
                     features_for_fps_distance = self.calc_square_dist(features_SSD, features_SSD)
@@ -353,20 +395,6 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
 
             sampled_idx_list = torch.cat(sampled_idx_list, dim=-1) 
             new_xyz = pointnet2_utils.gather_operation(xyz_flipped, sampled_idx_list).transpose(1, 2).contiguous()
-            
-            batch_size = new_xyz.shape[0]
-            if soft_fg_npoint is not None and len(soft_bg_points) == batch_size and len(soft_fg_npoint) > 0:
-                for batch in range(batch_size):
-                    batch_fg_points = soft_bg_points[batch][:,1:4].unsqueeze(0).transpose(1, 2).contiguous() 
-                    if batch_fg_points.shape[-1] >= soft_fg_npoint[0]:
-                        fg_sample_idx = pointnet2_utils.furthest_point_sample(batch_fg_points.transpose(1, 2).contiguous(), soft_fg_npoint[0])
-                        new_batch_soft_bg_points = pointnet2_utils.gather_operation(batch_fg_points, fg_sample_idx).transpose(1, 2).contiguous().squeeze()
-                        new_soft_bg_points.append(torch.cat([new_xyz.new_ones([soft_fg_npoint[0], 1]) * batch, new_batch_soft_bg_points], dim = -1))
-                    else:
-                        continue
-                if len(new_soft_bg_points) == batch_size:
-                    new_xyz = torch.cat([new_xyz, torch.cat(new_soft_bg_points, dim = 0)[:,1:4].view(batch_size, -1, 3)], dim = 1)
-                    
 
         else:
             new_xyz = ctr_xyz
@@ -402,7 +430,7 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
         else:
             cls_features = None
 
-        return new_xyz, new_features, cls_features, new_soft_bg_points
+        return new_xyz, new_features, cls_features
 
 class Vote_layer(nn.Module):
     """ Light voting module with limitation"""
@@ -527,6 +555,181 @@ class PointnetFPModule(nn.Module):
 
         return new_features.squeeze(-1)
 
+
+class PointnetSampling(_PointnetSAModuleBase):
+    """Pointnet set abstraction layer with specific downsampling and multiscale grouping """
+
+    def __init__(self, *,
+                 npoint_list: List[int],
+                 sample_range_list: List[int],
+                 sample_type_list: List[int],
+                 radii: List[float],
+                 nsamples: List[int],
+                 mlps: List[List[int]],                 
+                 use_xyz: bool = True,
+                 dilated_group=False,
+                 pool_method='max_pool',
+                 aggregation_mlp: List[int]):
+        """
+        :param npoint_list: list of int, number of samples for every sampling type
+        :param sample_range_list: list of list of int, sample index range [left, right] for every sampling type
+        :param sample_type_list: list of str, list of used sampling type, d-fps or f-fps
+        :param radii: list of float, list of radii to group with
+        :param nsamples: list of int, number of samples in each ball query
+        :param mlps: list of list of int, spec of the pointnet before the global pooling for each scale
+        :param use_xyz:
+        :param pool_method: max_pool / avg_pool
+        :param dilated_group: whether to use dilated group
+        :param aggregation_mlp: list of int, spec aggregation mlp
+        :param confidence_mlp: list of int, spec confidence mlp
+        :param num_class: int, class for process
+        """
+        super().__init__()
+        self.sample_type_list = sample_type_list
+        self.sample_range_list = sample_range_list
+        self.dilated_group = dilated_group
+
+        assert len(radii) == len(nsamples) == len(mlps)
+
+        self.npoint_list = npoint_list
+        self.groupers = nn.ModuleList()
+        self.mlps = nn.ModuleList()
+
+        out_channels = 0
+        for i in range(len(radii)):
+            radius = radii[i]
+            nsample = nsamples[i]
+            if self.dilated_group:
+                if i == 0:
+                    min_radius = 0.
+                else:
+                    min_radius = radii[i-1]
+                self.groupers.append(
+                    pointnet2_utils.QueryDilatedAndGroup(
+                        radius, min_radius, nsample, use_xyz=use_xyz)
+                    if npoint_list is not None else pointnet2_utils.GroupAll(use_xyz)
+                )
+            else:
+                self.groupers.append(
+                    pointnet2_utils.QueryAndGroup(
+                        radius, nsample, use_xyz=use_xyz)
+                    if npoint_list is not None else pointnet2_utils.GroupAll(use_xyz)
+                )
+            mlp_spec = mlps[i]
+            if use_xyz:
+                mlp_spec[0] += 3
+
+            shared_mlps = []
+            for k in range(len(mlp_spec) - 1):
+                shared_mlps.extend([
+                    nn.Conv2d(mlp_spec[k], mlp_spec[k + 1],
+                              kernel_size=1, bias=False),
+                    nn.BatchNorm2d(mlp_spec[k + 1]),
+                    nn.ReLU()
+                ])
+            self.mlps.append(nn.Sequential(*shared_mlps))
+            out_channels += mlp_spec[-1]
+
+        self.pool_method = pool_method
+
+        if (aggregation_mlp is not None) and (len(aggregation_mlp) != 0) and (len(self.mlps) > 0):
+            shared_mlp = []
+            for k in range(len(aggregation_mlp)):
+                shared_mlp.extend([
+                    nn.Conv1d(out_channels,
+                              aggregation_mlp[k], kernel_size=1, bias=False),
+                    nn.BatchNorm1d(aggregation_mlp[k]),
+                    nn.ReLU()
+                ])
+                out_channels = aggregation_mlp[k]
+            self.aggregation_layer = nn.Sequential(*shared_mlp)
+        else:
+            self.aggregation_layer = None
+
+        self.confidence_layers = None
+
+
+    def forward(self, xyz: torch.Tensor, features: torch.Tensor = None, cls_features: torch.Tensor = None, new_xyz=None, ctr_xyz=None, **kwargs):
+        """
+        :param xyz: (B, N, 3) tensor of the xyz coordinates of the features
+        :param features: (B, C, N) tensor of the descriptors of the the features
+        :param cls_features: (B, N, num_class) tensor of the descriptors of the the confidence (classification) features 
+        :param new_xyz: (B, M, 3) tensor of the xyz coordinates of the sampled points
+        "param ctr_xyz: tensor of the xyz coordinates of the centers 
+        :return:
+            new_xyz: (B, npoint, 3) tensor of the new features' xyz
+            new_features: (B, \sum_k(mlps[k][-1]), npoint) tensor of the new_features descriptors
+            cls_features: (B, npoint, num_class) tensor of confidence (classification) features
+        """
+        new_features_list = []
+        xyz_flipped = xyz.transpose(1, 2).contiguous() 
+        sampled_idx_list = []
+        if ctr_xyz is None:
+            last_sample_end_index = 0
+            
+            for i in range(len(self.sample_type_list)):
+                sample_type = self.sample_type_list[i]
+                sample_range = self.sample_range_list[i]
+                npoint = self.npoint_list[i]
+
+                if npoint <= 0:
+                    continue
+                if sample_range == -1: #全部
+                    xyz_tmp = xyz[:, last_sample_end_index:, :]
+                    feature_tmp = features.transpose(1, 2)[:, last_sample_end_index:, :].contiguous()  
+                    cls_features_tmp = cls_features[:, last_sample_end_index:, :] if cls_features is not None else None 
+                else:
+                    xyz_tmp = xyz[:, last_sample_end_index:sample_range, :].contiguous()
+                    feature_tmp = features.transpose(1, 2)[:, last_sample_end_index:sample_range, :]
+                    cls_features_tmp = cls_features[:, last_sample_end_index:sample_range, :] if cls_features is not None else None 
+                    last_sample_end_index += sample_range
+
+                if xyz_tmp.shape[1] <= npoint: # No downsampling
+                    sample_idx = torch.arange(xyz_tmp.shape[1], device=xyz_tmp.device, dtype=torch.int32) * torch.ones(xyz_tmp.shape[0], xyz_tmp.shape[1], device=xyz_tmp.device, dtype=torch.int32)
+
+                elif 'D-FPS' in sample_type or 'DFS' in sample_type:
+                    sample_idx = pointnet2_utils.furthest_point_sample(xyz_tmp.contiguous(), npoint)
+
+                sampled_idx_list.append(sample_idx)
+
+            sampled_idx_list = torch.cat(sampled_idx_list, dim=-1) 
+            new_xyz = pointnet2_utils.gather_operation(xyz_flipped, sampled_idx_list).transpose(1, 2).contiguous()
+            
+        else:
+            new_xyz = ctr_xyz
+
+        if len(self.groupers) > 0:
+            for i in range(len(self.groupers)):
+                new_features = self.groupers[i](xyz, new_xyz, features)  # (B, C, npoint, nsample)
+                new_features = self.mlps[i](new_features)  # (B, mlp[-1], npoint, nsample)
+                if self.pool_method == 'max_pool':
+                    new_features = F.max_pool2d(
+                        new_features, kernel_size=[1, new_features.size(3)]
+                    )  # (B, mlp[-1], npoint, 1)
+                elif self.pool_method == 'avg_pool':
+                    new_features = F.avg_pool2d(
+                        new_features, kernel_size=[1, new_features.size(3)]
+                    )  # (B, mlp[-1], npoint, 1)
+                else:
+                    raise NotImplementedError
+
+                new_features = new_features.squeeze(-1)  # (B, mlp[-1], npoint)
+                new_features_list.append(new_features)
+
+            new_features = torch.cat(new_features_list, dim=1)
+
+            if self.aggregation_layer is not None:
+                new_features = self.aggregation_layer(new_features)
+        else:
+            new_features = pointnet2_utils.gather_operation(features, sampled_idx_list).contiguous()
+
+        if self.confidence_layers is not None:
+            cls_features = self.confidence_layers(new_features).transpose(1, 2)
+            
+        else:
+            cls_features = None
+
+        return new_xyz, new_features, sampled_idx_list
 
 if __name__ == "__main__":
     pass

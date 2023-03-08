@@ -104,8 +104,15 @@ class PAGNet_Backbone(nn.Module):
         """
         batch_size = batch_dict['batch_size']
         points = batch_dict['points']
-        batch_idx, xyz, _ = self.break_up_pc(points)
-        features = batch_dict['features']
+        batch_idx, xyz, features = self.break_up_pc(points)
+        stds = batch_dict['stds']
+        # vs_points = []
+        # batch_mask = points[:,0] == 1
+        # batch_points = points[batch_mask]
+        # vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['sem_labels'][batch_mask].view(-1,1)], dim = -1))
+        # vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
+
+        
 
         xyz_batch_cnt = xyz.new_zeros(batch_size).int()
         for bs_idx in range(batch_size):
@@ -125,7 +132,7 @@ class PAGNet_Backbone(nn.Module):
 
             if self.layer_types[i] == 'SA_Layer':
                 ctr_xyz = encoder_xyz[self.ctr_idx_list[i]] if self.ctr_idx_list[i] != -1 else None
-                li_xyz, li_features, li_cls_pred, _ = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz)
+                li_xyz, li_features, li_cls_pred = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz, stds = stds)
 
             elif self.layer_types[i] == 'Vote_Layer': #i=4
                 li_xyz, li_features, xyz_select, ctr_offsets = self.SA_modules[i](xyz_input, feature_input)
@@ -135,6 +142,7 @@ class PAGNet_Backbone(nn.Module):
                 encoder_coords.append(torch.cat([center_origin_batch_idx[..., None].float(),centers_origin.view(batch_size, -1, 3)],dim =-1))
                     
             encoder_xyz.append(li_xyz)
+            # vs_points.append(li_xyz.view(batch_size, -1, 3)[1,...])
             li_batch_idx = batch_idx.view(batch_size, -1)[:, :li_xyz.shape[1]]
             encoder_coords.append(torch.cat([li_batch_idx[..., None].float(),li_xyz.view(batch_size, -1, 3)],dim =-1))
             encoder_features.append(li_features)            
@@ -159,6 +167,23 @@ class PAGNet_Backbone(nn.Module):
         batch_dict['encoder_coords'] = encoder_coords
         batch_dict['sa_ins_preds'] = sa_ins_preds
         batch_dict['encoder_features'] = encoder_features
+
+
+        # import numpy as np
+        # gt_center = batch_dict['gt_boxes'][1,:,:3]
+        # if gt_center.shape[0] > 10:
+        #     np.savetxt('../vspoints/kitti/{}.txt'.format('gt_center'), gt_center.detach().cpu().numpy())
+        #     save_names = ['fake_sem_points','DFPS1','DFPS2','ca1','ca2','center_pred']
+        #     for i in range(6):
+        #         if save_names[i] == 'ca1':
+        #             cls_pred = torch.argmax(sa_ins_preds[2][1,:,1:], dim = -1)
+        #             ca_points_wh_label = torch.cat([vs_points[i], cls_pred.unsqueeze(dim=-1)], dim = -1)
+        #             np.savetxt('../vspoints/kitti/{}.txt'.format(save_names[i]), ca_points_wh_label.detach().cpu().numpy())
+        #         else:
+        #             np.savetxt('../vspoints/kitti/{}.txt'.format(save_names[i]), vs_points[i].detach().cpu().numpy())
+
+            
+        
         
         
         ###save per frame 

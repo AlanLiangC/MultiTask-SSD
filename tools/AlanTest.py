@@ -2,6 +2,8 @@ from pcdet.models.backbones_2d import convmlp
 import torch
 import torch.nn as nn
 import numpy as np
+from torch.autograd import Variable
+
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -307,7 +309,11 @@ def get_random_train_idx(sem_repeat_num, det_repeat_num, sample_num):
     assert train_idx.shape[0] == sample_num
     return train_idx
 
-
+def reparametrize(mu, logvar):
+        std = logvar.mul(0.5).exp_()
+        eps = torch.cuda.FloatTensor(std.size()).normal_()
+        eps = Variable(eps)
+        return eps.mul(std).add_(mu)
 
 
 
@@ -352,6 +358,15 @@ if __name__ == "__main__":
 
     # print(space_to_depth(x,2))
 
-    result = get_random_train_idx(15,45,20000)
-    print(result.shape)
+    # result = get_random_train_idx(15,45,20000)
+    # print(result.shape)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    mu = torch.rand(4,8).to(device)
+    logvar = torch.randn(4,8).to(device)
+
+    for _ in range(2):
+        print(reparametrize(mu, logvar))
+    
 

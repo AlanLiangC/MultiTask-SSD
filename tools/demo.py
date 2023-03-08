@@ -16,7 +16,7 @@ except:
 import numpy as np
 import torch
 
-from pcdet.config import cfg, cfg_from_yaml_file
+from pcdet.config import cfg, cfg2, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
 from pcdet.utils import common_utils
@@ -67,16 +67,33 @@ def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/IA-SSD.yaml',
                         help='specify the config for demo')
+    parser.add_argument('--surface_cfg_file', type=str, default='../surface_uncertainty/cfgs/sf_unc.yaml',
+                        help='specify the config for demo')
     parser.add_argument('--data_path', type=str, default='../data/kitti/training/velodyne/000001.bin',
                         help='specify the point cloud data file or directory')
     parser.add_argument('--ckpt', type=str, default='../output/cfgs/kitti_models/IA-SSD/default/ckpt/checkpoint_epoch_80.pth', help='specify the pretrained model')
     parser.add_argument('--ext', type=str, default='.bin', help='specify the extension of your point cloud data file')
+    parser.add_argument('--item', type=int, default=101, help='specify the extension of your point cloud data file')
 
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)
 
     return args, cfg
+
+def surface_parse_config():
+    parser = argparse.ArgumentParser(description='arg parser')
+
+    parser.add_argument('--cfg_file', type=str, default='../surface_uncertainty/cfgs/sf_unc.yaml',
+                        help='specify the config for demo')
+    parser.add_argument('--ckpt', type=str, default='../surface_uncertainty/output/cfgs/sf_unc/V2/ckpt/checkpoint_epoch_400.pth', help='specify the pretrained model')
+    parser.add_argument('--ext', type=str, default='.bin', help='specify the extension of your point cloud data file')
+
+    args = parser.parse_args()
+
+    cfg_from_yaml_file(args.cfg_file, cfg2)
+
+    return args, cfg2
 
 
 
@@ -128,7 +145,7 @@ def liang():
     model.eval()
     with torch.no_grad():
 
-        data_dict = demo_dataset.getitem(8)
+        data_dict = demo_dataset.getitem(args.item)
         data_dict = demo_dataset.collate_batch([data_dict])
         load_data_to_gpu(data_dict)
         pred_dicts, _ = model.forward(data_dict)
@@ -143,6 +160,63 @@ def liang():
 
     logger.info('Demo done.')
 
+
+def surface():
+    from surface_uncertainty.model import Generate_center
+
+    args, cfg = parse_config()
+    surface_args, surface_cfg = surface_parse_config()
+    logger = common_utils.create_logger()
+    logger.info('-----------------Quick Demo of OpenPCDet-------------------------')
+
+    demo_dataset = DemoDatasetV2(dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
+        root_path=None, logger=logger)
+
+    logger.info(f'Total number of samples: \t{len(demo_dataset)}')
+
+    model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=demo_dataset)
+    model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
+    model.cuda()
+    model.eval()
+
+    # Generator
+    generator = Generate_center(surface_cfg.MODEL)
+    generator.load_params_from_file(filename=surface_args.ckpt, logger=logger, to_cpu=True)
+    generator.cuda()
+    generator.eval()
+
+    
+    with torch.no_grad():
+
+        data_dict = demo_dataset.getitem(11)
+        data_dict = demo_dataset.collate_batch([data_dict])
+        load_data_to_gpu(data_dict)
+        pred_dicts, _ = model.forward(data_dict)
+        surface_dict = generator.forward(data_dict)
+
+        # V.draw_scenes(
+        #     points=data_dict['points'][:, 1:],gt_boxes=data_dict['gt_boxes'][0], ref_boxes=pred_dicts[0]['pred_boxes'],
+        #     ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
+        # )
+
+        # V.draw_scenes(
+        #     points=surface_dict['center_pred'][0,...][surface_dict['topk']],gt_boxes=data_dict['gt_boxes'][0], ref_boxes=pred_dicts[0]['pred_boxes'],
+        #     ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
+        # )
+        V.draw_surface_scenes(
+            points=surface_dict['sa_points'][0,...],
+            center_pred=surface_dict['center_pred'][0,...],
+            topk=surface_dict['topk'],
+            gt_boxes=data_dict['gt_boxes'][0], 
+            ref_boxes=pred_dicts[0]['pred_boxes'],
+            ref_scores=pred_dicts[0]['pred_scores'], 
+            ref_labels=pred_dicts[0]['pred_labels']
+        )
+
+        if not OPEN3D_FLAG:
+            mlab.show(stop=True)
+
+    logger.info('Demo done.')
 
 if __name__ == '__main__':
     liang()

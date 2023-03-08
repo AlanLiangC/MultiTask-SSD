@@ -16,9 +16,6 @@ class MLT_SSD_Head(PointHeadTemplate):
         self.predict_boxes_when_training = predict_boxes_when_training
 
         target_cfg = self.model_cfg.TARGET_CONFIG
-        self.sem_criterion = loss_utils.CPGNetCriterion(
-                    weight='dynamic-log', ignore=target_cfg.SEM_IGNORE,classes='present', with_ls=True, with_tc=False
-                )
         self.box_coder = getattr(box_coder_utils, target_cfg.BOX_CODER)(
             **target_cfg.BOX_CODER_CONFIG
         )
@@ -405,13 +402,6 @@ class MLT_SSD_Head(PointHeadTemplate):
     def get_loss(self, tb_dict=None):
         tb_dict = {} if tb_dict is None else tb_dict
 
-        # sem loss
-        if hasattr(self,'SEM_TASK'):
-            if self.SEM_TASK:
-                sem_pred = self.forward_ret_dict['sem_pred']
-                sem_labels = self.forward_ret_dict['sem_labels']
-                sem_loss = self.sem_criterion(sem_pred,sem_labels)['loss']
-
         # vote loss
         if self.model_cfg.TARGET_CONFIG.get('ASSIGN_METHOD') is not None and \
             self.model_cfg.TARGET_CONFIG.ASSIGN_METHOD.get('ASSIGN_TYPE')== 'centers_origin':
@@ -454,10 +444,8 @@ class MLT_SSD_Head(PointHeadTemplate):
         if self.model_cfg.LOSS_CONFIG.get('IOU3D_REGULARIZATION', False):
             iou3d_loss, tb_dict_7 = self.get_iou3d_layer_loss()          
             tb_dict.update(tb_dict_7)
-
+        
         point_loss = center_loss_reg + center_loss_cls + center_loss_box + corner_loss + sa_loss_cls + iou3d_loss             
-        if self.SEM_TASK:
-            point_loss += sem_loss
         return point_loss, tb_dict
 
 
@@ -474,10 +462,7 @@ class MLT_SSD_Head(PointHeadTemplate):
             centers_pred = centers_pred[simple_pos_mask][:, 1:4]
             simple_center_origin_loss_box = F.smooth_l1_loss(centers_pred, center_box_labels)
             center_origin_loss_box.append(simple_center_origin_loss_box.unsqueeze(-1))
-        if len(center_origin_loss_box) == 0:
-            center_origin_loss_box = pos_mask.new_zeros([0])
-        else:
-            center_origin_loss_box = torch.cat(center_origin_loss_box, dim=-1).mean()
+        center_origin_loss_box = torch.cat(center_origin_loss_box, dim=-1).mean()
         center_origin_loss_box = center_origin_loss_box * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS.get('vote_weight')
         if tb_dict is None:
             tb_dict = {}
@@ -615,9 +600,9 @@ class MLT_SSD_Head(PointHeadTemplate):
             one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0)
             one_hot_targets = one_hot_targets[..., 1:]
 
-            if ('ctr' in self.model_cfg.LOSS_CONFIG.SAMPLE_METHOD_LIST[i+1][0]):
-                centerness_mask = sa_centerness_mask[i]
-                one_hot_targets = one_hot_targets * centerness_mask.unsqueeze(-1).repeat(1, one_hot_targets.shape[1])
+            # if ('ctr' in self.model_cfg.LOSS_CONFIG.SAMPLE_METHOD_LIST[i+1][0]):
+            #     centerness_mask = sa_centerness_mask[i]
+            #     one_hot_targets = one_hot_targets * centerness_mask.unsqueeze(-1).repeat(1, one_hot_targets.shape[1])
 
             point_loss_ins = self.ins_loss_func(point_cls_preds, one_hot_targets, weights=cls_weights).mean(dim=-1).sum()        
             loss_weights_dict = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS
@@ -829,20 +814,6 @@ class MLT_SSD_Head(PointHeadTemplate):
                     'sa_ins_preds': batch_dict['sa_ins_preds'],
                     'box_iou3d_preds': box_iou3d_preds,
                     }
-        if batch_dict.get('sem_pred', None) is not None:
-            self.SEM_TASK = True
-            ret_dict.update({
-                'sem_pred': batch_dict['sem_pred'],
-            })
-            if batch_dict.get('fake_labels', None) is not None:
-                ret_dict.update({
-                'sem_labels': batch_dict['fake_labels']
-                })
-            else:
-                ret_dict.update({
-                'sem_labels': batch_dict['sem_labels']
-                })
-
         if self.training:
             targets_dict = self.assign_targets(batch_dict)
             ret_dict.update(targets_dict)
