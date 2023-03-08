@@ -488,7 +488,7 @@ class Generate_center(nn.Module):
         normal_dist = Independent(Normal(loc=torch.zeros_like(mux), scale=torch.ones_like(logvarx)), 1)
         dist_prior = Independent(Normal(loc=mux, scale=torch.exp(logvarx)+3e-22), 1)
 
-        lattent_loss = torch.mean(self.kl_divergence(normal_dist, dist_prior))*5e-2
+        lattent_loss = torch.mean(self.kl_divergence(normal_dist, dist_prior))*5e-3
         point_loss += lattent_loss
 
         mux = self.forward_ret_dict['mux'][~pos_mask]
