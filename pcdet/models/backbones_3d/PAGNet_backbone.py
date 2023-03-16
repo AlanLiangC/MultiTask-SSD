@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-
-from ...ops.pointnet2.pointnet2_batch import pointnet2_modules
+import copy
+from ...ops.pointnet2.pointnet2_batch import pointnet2_modules, pointnet2_utils, surface_feature
 import os
 
 class PAGNet_Backbone(nn.Module):
@@ -25,6 +25,10 @@ class PAGNet_Backbone(nn.Module):
         self.aggregation_mlps = sa_config.get('AGGREGATION_MLPS', None)
         self.confidence_mlps = sa_config.get('CONFIDENCE_MLPS', None)
         self.max_translate_range = sa_config.get('MAX_TRANSLATE_RANGE', None)
+
+        # use surface feature
+        if sa_config.get('USE_SURFACE', False):
+            self.SF_extract = surface_feature.FeatureExtraction()
 
 
         for k in range(sa_config.NSAMPLE_LIST.__len__()):
@@ -68,7 +72,10 @@ class PAGNet_Backbone(nn.Module):
                         dilated_group=sa_config.DILATED_GROUP[k],
                         aggregation_mlp=aggregation_mlp,
                         confidence_mlp=confidence_mlp,
-                        num_class = self.num_class
+                        num_class = self.num_class,
+                        # Stable sampling
+                        ss_radii=sa_config.SS_RADIUS_LIST[k] if sa_config.get('SS_RADIUS_LIST',None) is not None else None,
+                        ss_nsamples=sa_config.SS_NSAMPLE_LIST[k] if sa_config.get('SS_NSAMPLE_LIST',None) is not None else None,
                     )
                 )
 
@@ -79,6 +86,8 @@ class PAGNet_Backbone(nn.Module):
                                                                     )
                                        )
 
+            if hasattr(self,'SF_extract') and k == 3:
+                channel_out += 60
             channel_out_list.append(channel_out)
 
         self.num_point_features = channel_out
@@ -105,7 +114,7 @@ class PAGNet_Backbone(nn.Module):
         batch_size = batch_dict['batch_size']
         points = batch_dict['points']
         batch_idx, xyz, features = self.break_up_pc(points)
-        stds = batch_dict['stds']
+        stds = batch_dict.get('stds', None)
         # vs_points = []
         # batch_mask = points[:,0] == 1
         # batch_points = points[batch_mask]
@@ -123,6 +132,12 @@ class PAGNet_Backbone(nn.Module):
         features = features.view(batch_size, -1, features.shape[-1]).permute(0, 2, 1).contiguous() if features is not None else None ###
 
         encoder_xyz, encoder_features, sa_ins_preds = [xyz], [features], []
+
+        ########################Surface########################
+        sample_list = []
+        surface_feature = None
+        ########################Surface########################
+        
         encoder_coords = [torch.cat([batch_idx.view(batch_size, -1, 1), xyz], dim=-1)]
 
         li_cls_pred = None
@@ -132,10 +147,19 @@ class PAGNet_Backbone(nn.Module):
 
             if self.layer_types[i] == 'SA_Layer':
                 ctr_xyz = encoder_xyz[self.ctr_idx_list[i]] if self.ctr_idx_list[i] != -1 else None
-                li_xyz, li_features, li_cls_pred = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz, stds = stds)
+                li_xyz, li_features, li_cls_pred, sampled_idx_list, stds = self.SA_modules[i](xyz_input, feature_input, li_cls_pred, ctr_xyz=ctr_xyz, stds = stds)
+                sample_list.append(sampled_idx_list)
+                ########################Surface########################
+                # if hasattr(self,'SF_extract') and i == 0:
+                if hasattr(self,'SF_extract') and i <= 4:
+                    if i == 0:
+                        surface_feature = self.SF_extract(xyz).permute(0,2,1).contiguous()
+                    surface_feature = pointnet2_utils.gather_operation(surface_feature, sampled_idx_list)
+                    # li_features = torch.cat([surface_feature, li_features], dim=1)
+                #######################################################
 
             elif self.layer_types[i] == 'Vote_Layer': #i=4
-                li_xyz, li_features, xyz_select, ctr_offsets = self.SA_modules[i](xyz_input, feature_input)
+                li_xyz, li_features, xyz_select, ctr_offsets = self.SA_modules[i](xyz_input, feature_input,center_surface_futures = surface_feature)
                 centers = li_xyz
                 centers_origin = xyz_select
                 center_origin_batch_idx = batch_idx.view(batch_size, -1)[:, :centers_origin.shape[1]]

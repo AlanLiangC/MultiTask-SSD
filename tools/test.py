@@ -34,7 +34,7 @@ def parse_config():
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
     parser.add_argument('--set', dest='set_cfgs', default=None, nargs=argparse.REMAINDER,
                         help='set extra config keys if needed')
-
+    
     parser.add_argument('--max_waiting_mins', type=int, default=30, help='max waiting minutes')
     parser.add_argument('--start_epoch', type=int, default=0, help='')
     parser.add_argument('--eval_tag', type=str, default='default', help='eval tag for this experiment')
@@ -200,6 +200,6 @@ def main():
 
 
 if __name__ == '__main__':
-    # os.environ["CUDA_VISIBLE_DEVIDES"] = "1"
-    # torch.cuda.set_device(1)
+    os.environ["CUDA_VISIBLE_DEVIDES"] = "2"
+    torch.cuda.set_device(2)
     main()

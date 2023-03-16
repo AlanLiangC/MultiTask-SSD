@@ -25,6 +25,11 @@ class Detector3DTemplate(nn.Module):
             'backbone_2d', 'dense_head',  'point_head', 'roi_head'
         ]
 
+        # self.module_topology = [
+        #     'vfe', 'backbone_3d', 'map_to_bev_module', 'pfe',
+        #     'backbone_2d', 'dense_head',  'point_head', 'roi_head'
+        # ]
+
     @property
     def mode(self):
         return 'TRAIN' if self.training else 'TEST'

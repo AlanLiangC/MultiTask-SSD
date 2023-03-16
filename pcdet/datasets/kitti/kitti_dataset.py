@@ -361,6 +361,34 @@ class KittiDataset(DatasetTemplate):
         ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names)
 
         return ap_result_str, ap_dict
+    
+    def submission(self, det_annos, submission_prefix, **kwargs):
+        if 'annos' not in self.kitti_infos[0].keys():
+            return None, {}
+
+        eval_det_annos = copy.deepcopy(det_annos)
+
+        for i, anno in enumerate(eval_det_annos):
+                sample_idx = self.kitti_infos[i]['image']['image_idx']
+                cur_det_file = f'{submission_prefix}/{sample_idx:06d}.txt'
+                with open(cur_det_file, 'w') as f:
+                    bbox = anno['bbox']
+                    loc = anno['location']
+                    dims = anno['dimensions'][::-1]  # lhw -> hwl
+                    for idx in range(len(bbox)):
+                        print(
+                            '{} -1 -1 {:4f} {:4f} {:4f} {:4f} {:4f} {:4f} '
+                            '{:4f} {:4f} {:4f} {:4f} {:4f} {:4f} {:4f}'.format(
+                                anno['name'][idx],
+                                anno['alpha'][idx],
+                                *bbox[idx],  # 4 float
+                                *dims[idx],  # 3 float
+                                *loc[idx],  # 3 float
+                                anno['rotation_y'][idx],
+                                anno['score'][idx]),
+                            file=f,
+                        )
+
 
     def __len__(self):
         if self._merge_all_iters_to_one_epoch:
@@ -425,6 +453,69 @@ class KittiDataset(DatasetTemplate):
 
         data_dict['image_shape'] = img_shape
         return data_dict
+    
+    def vis_mmdet_item(self, index):
+        # index = 4
+        if self._merge_all_iters_to_one_epoch:
+            index = index % len(self.kitti_infos)
+
+        info = copy.deepcopy(self.kitti_infos[index])
+
+        sample_idx = info['point_cloud']['lidar_idx']
+        img_shape = info['image']['image_shape']
+        calib = self.get_calib(sample_idx)
+        get_item_list = ['points','calib_matricies','images']
+
+        input_dict = {
+            'frame_id': sample_idx,
+            'calib': calib,
+        }
+
+        if 'annos' in info:
+            annos = info['annos']
+            annos = common_utils.drop_info_with_name(annos, name='DontCare')
+            loc, dims, rots = annos['location'], annos['dimensions'], annos['rotation_y']
+            gt_names = annos['name']
+            gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
+            gt_boxes_lidar = box_utils.boxes3d_kitti_camera_to_lidar(gt_boxes_camera, calib)
+
+            input_dict.update({
+                'gt_names': gt_names,
+                'gt_boxes': gt_boxes_lidar
+            })
+            if "gt_boxes2d" in get_item_list:
+                input_dict['gt_boxes2d'] = annos["bbox"]
+
+            road_plane = self.get_road_plane(sample_idx)
+            if road_plane is not None:
+                input_dict['road_plane'] = road_plane
+
+        if "points" in get_item_list:
+            points = self.get_lidar(sample_idx)
+            if self.dataset_cfg.FOV_POINTS_ONLY:
+                pts_rect = calib.lidar_to_rect(points[:, 0:3])
+                fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
+                points = points[fov_flag]
+            input_dict['points'] = points
+
+        if "images" in get_item_list:
+            input_dict['images'] = self.get_image(sample_idx)
+
+        if "depth_maps" in get_item_list:
+            input_dict['depth_maps'] = self.get_depth_map(sample_idx)
+
+        if "calib_matricies" in get_item_list:
+            input_dict["trans_lidar_to_cam"], input_dict["trans_cam_to_img"] = kitti_utils.calib_to_matricies(calib)
+
+        data_dict = self.prepare_data(data_dict=input_dict)
+
+        data_dict['image_shape'] = img_shape
+
+        rect = calib.R0.astype(np.float32)
+        V2C = calib.V2C.astype(np.float32)
+        P2 = calib.P2.astype(np.float32)
+        return data_dict
+
 
 
 # This class is for visible gt 

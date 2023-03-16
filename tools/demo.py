@@ -20,7 +20,7 @@ from pcdet.config import cfg, cfg2, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
 from pcdet.utils import common_utils
-from pcdet.datasets.kitti.kitti_dataset import DemoDatasetV2
+from pcdet.datasets.kitti.kitti_dataset import DemoDatasetV2, KittiDataset
 
 
 class DemoDataset(DatasetTemplate):
@@ -65,7 +65,7 @@ class DemoDataset(DatasetTemplate):
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/IA-SSD.yaml',
+    parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/PAGNet.yaml',
                         help='specify the config for demo')
     parser.add_argument('--surface_cfg_file', type=str, default='../surface_uncertainty/cfgs/sf_unc.yaml',
                         help='specify the config for demo')
@@ -73,7 +73,7 @@ def parse_config():
                         help='specify the point cloud data file or directory')
     parser.add_argument('--ckpt', type=str, default='../output/cfgs/kitti_models/IA-SSD/default/ckpt/checkpoint_epoch_80.pth', help='specify the pretrained model')
     parser.add_argument('--ext', type=str, default='.bin', help='specify the extension of your point cloud data file')
-    parser.add_argument('--item', type=int, default=101, help='specify the extension of your point cloud data file')
+    parser.add_argument('--item', type=int, default=8, help='specify the extension of your point cloud data file')
 
     args = parser.parse_args()
 
@@ -218,5 +218,78 @@ def surface():
 
     logger.info('Demo done.')
 
+def mmdet_vis():
+    from visual_utils.visualizer.show_result import show_result, show_multi_modality_result
+    # from pcdet.core.bbox import LiDARInstance3DBoxes
+    from mmdet3d.core.bbox import LiDARInstance3DBoxes, Coord3DMode, Box3DMode
+    args, cfg = parse_config()
+    logger = common_utils.create_logger()
+    logger.info('-----------------Quick Demo of OpenPCDet-------------------------')
+
+    demo_dataset = KittiDataset(dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
+        root_path=None, logger=logger)
+
+    logger.info(f'Total number of samples: \t{len(demo_dataset)}')
+
+    model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=demo_dataset)
+    model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
+    model.cuda()
+    model.eval()
+    with torch.no_grad():
+
+        data_dict = demo_dataset.vis_mmdet_item(args.item)
+        data_dict = demo_dataset.collate_batch([data_dict])
+        load_data_to_gpu(data_dict)
+        pred_dicts, _ = model.forward(data_dict)
+
+        points = data_dict['points'][:, 1:].cpu().numpy()
+        points = Coord3DMode.convert_point(points, Coord3DMode.LIDAR,
+                                               Coord3DMode.DEPTH)
+
+        gt_boxes = data_dict['gt_boxes'].view(-1,8)[:,:-1].cpu().numpy()
+        show_gt_bboxes = Box3DMode.convert(gt_boxes, Box3DMode.LIDAR,
+                                               Box3DMode.DEPTH)
+
+        pred_boxes = pred_dicts[0]['pred_boxes'].cpu().numpy()
+        show_pred_bboxes = Box3DMode.convert(pred_boxes, Box3DMode.LIDAR,
+                                                 Box3DMode.DEPTH)
+
+        file_name = str(data_dict['frame_id'][0])
+
+        show_result(points,gt_bboxes=show_gt_bboxes,pred_bboxes=show_pred_bboxes,out_dir='./mmdet_vis',filename=file_name,show=False)
+        
+        show_calib = True
+        if show_calib:
+            img = data_dict['images']
+            img = img.squeeze().cpu().numpy()
+            
+            #################################################################
+            img_metas = data_dict['trans_lidar_to_cam'].squeeze().cpu().numpy()
+            P2 = data_dict['trans_cam_to_img'].squeeze().cpu().numpy()
+            P2 = np.vstack((P2, np.array([0, 0, 0, 1], dtype=np.float32)))  # (4, 4)
+            img_metas = P2 @ img_metas
+            #################################################################
+
+            img = img.transpose(1, 2, 0)
+            show_pred_bboxes = LiDARInstance3DBoxes(
+                pred_boxes, origin=(0.5, 0.5, 0.5))
+            show_gt_bboxes = LiDARInstance3DBoxes(
+                gt_boxes, origin=(0.5, 0.5, 0.5))
+            show_multi_modality_result(
+                img,
+                show_gt_bboxes,
+                show_pred_bboxes,
+                img_metas,
+                './mmdet_vis',
+                file_name,
+                box_mode='lidar',
+                show=False)
+
+
+
+
+
+    logger.info('Demo done.')
+
 if __name__ == '__main__':
-    liang()
+    mmdet_vis()

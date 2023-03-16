@@ -85,7 +85,7 @@ class PointnetSAModuleMSG(_PointnetSAModuleBase):
     """Pointnet set abstraction layer with multiscale grouping"""
 
     def __init__(self, *, npoint: int, radii: List[float], nsamples: List[int], mlps: List[List[int]], bn: bool = True,
-                 use_xyz: bool = True, pool_method='max_pool'):
+                 use_xyz: bool = True, pool_method='max_pool', **kwargs):
         """
         :param npoint: int
         :param radii: list of float, list of radii to group with
@@ -140,7 +140,8 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
                  pool_method='max_pool',
                  aggregation_mlp: List[int],
                  confidence_mlp: List[int],
-                 num_class):
+                 num_class,
+                 **kwargs):
         """
         :param npoint_list: list of int, number of samples for every sampling type
         :param sample_range_list: list of list of int, sample index range [left, right] for every sampling type
@@ -159,6 +160,15 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
         self.sample_type_list = sample_type_list
         self.sample_range_list = sample_range_list
         self.dilated_group = dilated_group
+
+        # Stable sampling
+        if kwargs.get('ss_radii', None) is not None:
+            ss_radii = kwargs['ss_radii']
+            ss_nsamples = kwargs['ss_nsamples']
+
+            if len(ss_radii) > 0:
+                self.ss_radii = ss_radii[0]
+                self.ss_nsamples = ss_nsamples[0]
 
         assert len(radii) == len(nsamples) == len(mlps)
 
@@ -250,9 +260,7 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
         new_features_list = []
         xyz_flipped = xyz.transpose(1, 2).contiguous() 
         sampled_idx_list = []
-        soft_fg_npoint = kwargs.get('soft_fg_npoint', None)
-        soft_bg_points = kwargs.get('soft_bg_points', None)
-        new_soft_bg_points = []
+        stds = kwargs['stds'].view(xyz_flipped.shape[0],1,-1).contiguous() if kwargs.get('stds', None) is not None else None
         if ctr_xyz is None:
             last_sample_end_index = 0
             
@@ -282,17 +290,34 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
                     score_picked, sample_idx = torch.topk(score_pred, npoint, dim=-1)           
                     sample_idx = sample_idx.int()
 
+                elif ('ss' in sample_type) or ('sss' in sample_type):
+                    if stds is None:
+                        raise NotImplementedError
+                    
+                    cls_features_max, class_pred = cls_features_tmp.max(dim=-1)
+                    cls_score_pred = torch.sigmoid(cls_features_max) # B,N
+
+                    stds = stds.squeeze()
+                    sta_score_pred = 1 - torch.sigmoid(stds/8-3) # B,N
+                    score_picked, sample_idx = torch.topk(cls_score_pred * sta_score_pred, npoint, dim=-1)           
+                    sample_idx = sample_idx.int()
+
+                    stds = pointnet2_utils.gather_operation(stds.view(xyz_flipped.shape[0],1,-1).contiguous(), sample_idx).squeeze()
+
                 elif 'D-FPS' in sample_type or 'DFS' in sample_type:
                     sample_idx = pointnet2_utils.furthest_point_sample(xyz_tmp.contiguous(), npoint)
+                    if stds is not None:
+                        stds = pointnet2_utils.gather_operation(stds.view(xyz_flipped.shape[0],1,-1).contiguous(), sample_idx).squeeze()
+
+
 
                 elif 'S-FPS' in sample_type or 'SFS' in sample_type:
-                    if kwargs.get('stds', None) is None:
+                    if stds is None:
                         raise NotImplementedError
-
+                    
                     # vis_points = []
-                    stds = kwargs['stds'].unsqueeze(dim = 1).contiguous()
                     sample_idx = pointnet2_utils.furthest_point_sample(xyz_tmp.contiguous(), npoint)
-                    new_xyz = pointnet2_utils.gather_operation(xyz_flipped, sample_idx).transpose(1, 2).contiguous()
+                    new_xyz = pointnet2_utils.gather_operation(xyz_flipped, sample_idx).transpose(1, 2).contiguous() # BCN BN
 
                     # ###############VIS##################
                     # vis_batch_points = xyz[0,...][sample_idx[0,...].long()]
@@ -301,14 +326,16 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
                     # ####################################
                     
                     ball_query = pointnet2_utils.BallQuery.apply
-                    idx = ball_query(0.2, 2, xyz, new_xyz) # [2, 4096, 16]
+                    idx = ball_query(self.ss_radii, self.ss_nsamples, xyz, new_xyz) # [2, 4096, 16]
 
                     grouping_operation = pointnet2_utils.GroupingOperation.apply
                     grouped_features = grouping_operation(stds, idx).squeeze()
 
                     stable_idx = torch.argmin(grouped_features, dim = -1).view(idx.shape[0],-1,1)
 
-                    sample_idx = torch.gather(idx,2,stable_idx).squeeze()
+                    sample_idx = torch.gather(idx,2,stable_idx).view(new_xyz.shape[0], -1)
+
+                    stds = pointnet2_utils.gather_operation(stds, sample_idx).squeeze()
 
                     # ###############VIS##################
                     # vis_batch_points = xyz[0,...][sample_idx[0,...].long()]
@@ -430,7 +457,7 @@ class PointnetSAModuleMSG_WithSampling(_PointnetSAModuleBase):
         else:
             cls_features = None
 
-        return new_xyz, new_features, cls_features
+        return new_xyz, new_features, cls_features, sampled_idx_list, stds
 
 class Vote_layer(nn.Module):
     """ Light voting module with limitation"""
@@ -455,11 +482,15 @@ class Vote_layer(nn.Module):
         self.max_offset_limit = torch.tensor(max_translate_range).float() if max_translate_range is not None else None
        
 
-    def forward(self, xyz, features):
+    def forward(self, xyz, features, **kwargs):
         xyz_select = xyz
         features_select = features
+        if kwargs.get('center_surface_futures', None) is not None:
+            self.center_surface_futures = kwargs['center_surface_futures']
 
         if self.mlp_modules is not None: 
+            if hasattr(self, 'center_surface_futures'):
+                features_select = torch.cat([self.center_surface_futures,features_select], dim = 1)
             new_features = self.mlp_modules(features_select) #([4, 256, 256]) ->([4, 128, 256])            
         else:
             new_features = new_features

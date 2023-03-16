@@ -1,5 +1,4 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
-# CLASS_NAMES: ['Cyclist']
 
 DATA_CONFIG:
     _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
@@ -22,20 +21,12 @@ DATA_CONFIG:
                 'test': False
             }
 
-        -   NAME: add_fake_sem_label
+        # -   NAME: add_fake_sem_label
+
+        
 
 MODEL:
     NAME: IASSD
-
-    MAP_TO_BEV:
-        NAME: PAGNet_encoding
-        _BASE_CONFIG_: ../surface_uncertainty/cfgs/sf_unc.yaml
-        # 4096 for training is better
-        CKPT: ../surface_uncertainty/output/cfgs/sf_unc/V4/ckpt/checkpoint_epoch_400.pth
-        # CKPT: ../output/V4/ckpt/checkpoint_epoch_400.pth
-        NUM_BEV_FEATURES: &NUM_BEV_FEATURES 1
-        TOPK: 4096
-        
      
     BACKBONE_3D:
         NAME: PAGNet_Backbone
@@ -43,14 +34,11 @@ MODEL:
             # Sampling setting:
             NPOINT_LIST: [[4096], [1024], [512], [256], [-1], [256]]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
-            SAMPLE_METHOD_LIST: &sample_method_list [['S-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
+            SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
             # Group and Abstraction setting:
-            SS_RADIUS_LIST: [[0.1], [0.2], [], [], [], []]
-            SS_NSAMPLE_LIST: [[16], [16], [], [], [], [1]]    
-
             RADIUS_LIST: [[0.2,0.8], [0.8,1.6], [1.6,4.8], [], [], [4.8, 6.4]]
-            NSAMPLE_LIST: [[16,32], [16,32], [16,32], [], [], [16, 32]]  
-            # USE_SURFACE: True            
+            NSAMPLE_LIST: [[16,32], [16,32], [16,32], [], [], [16, 32]]    
+            USE_SURFACE: True         
             MLPS: [[[16,16,32],  [32,32,64]],
                    [[64,64,128],  [64,96,128]],
                    [[128,128,256],  [128,256,256]],
@@ -70,7 +58,7 @@ MODEL:
             # SAVE_SAMPLE_LIST: True
 
     POINT_HEAD:
-        NAME: MLT_SSD_Head
+        NAME: IASSD_Head
         CLS_FC: [256, 256]
         REG_FC: [256, 256]
         CLASS_AGNOSTIC: False

@@ -8,8 +8,6 @@ DATA_CONFIG:
         -   NAME: mask_points_and_boxes_outside_range
             REMOVE_OUTSIDE_BOXES: True
 
-        # -   NAME: add_fake_sem_label
-
         -   NAME: sample_points
             NUM_POINTS: {
                 'train': 16384,
@@ -22,7 +20,7 @@ DATA_CONFIG:
                 'test': False
             }
 
-        -   NAME: add_fake_sem_label
+        # -   NAME: add_fake_sem_label
 
 MODEL:
     NAME: IASSD
@@ -30,8 +28,7 @@ MODEL:
     MAP_TO_BEV:
         NAME: PAGNet_encoding
         _BASE_CONFIG_: ../surface_uncertainty/cfgs/sf_unc.yaml
-        # 4096 for training is better
-        CKPT: ../surface_uncertainty/output/cfgs/sf_unc/V4/ckpt/checkpoint_epoch_400.pth
+        CKPT: ../surface_uncertainty/output/cfgs/sf_unc/V3/ckpt/checkpoint_epoch_400.pth
         # CKPT: ../output/V4/ckpt/checkpoint_epoch_400.pth
         NUM_BEV_FEATURES: &NUM_BEV_FEATURES 1
         TOPK: 4096
@@ -43,16 +40,19 @@ MODEL:
             # Sampling setting:
             NPOINT_LIST: [[4096], [1024], [512], [256], [-1], [256]]
             SAMPLE_RANGE_LIST: [[-1], [-1], [-1], [-1], [-1], [-1]]
-            SAMPLE_METHOD_LIST: &sample_method_list [['S-FPS'], ['D-FPS'], ['ctr_aware'], ['ctr_aware'], [], []]
+            SAMPLE_METHOD_LIST: &sample_method_list [['D-FPS'], ['D-FPS'], ['sss_aware'], ['sss_aware'], [], []]
             # Group and Abstraction setting:
-            SS_RADIUS_LIST: [[0.1], [0.2], [], [], [], []]
-            SS_NSAMPLE_LIST: [[16], [16], [], [], [], [1]]    
+            SS_RADIUS_LIST: [[0.05], [0.2], [], [], [], []]
+            SS_NSAMPLE_LIST: [[16], [16], [], [], [], [1]]   
+
+            USE_SURFACE: True 
+            
 
             RADIUS_LIST: [[0.2,0.8], [0.8,1.6], [1.6,4.8], [], [], [4.8, 6.4]]
-            NSAMPLE_LIST: [[16,32], [16,32], [16,32], [], [], [16, 32]]  
-            # USE_SURFACE: True            
+            NSAMPLE_LIST: [[16,32], [16,32], [16,32], [], [], [16, 32]]            
             MLPS: [[[16,16,32],  [32,32,64]],
-                   [[64,64,128],  [64,96,128]],
+                  #  [[64,64,128],  [64,96,128]],
+                  [[124,64,128],  [124,96,128]],
                    [[128,128,256],  [128,256,256]],
                    [],
                    [128],

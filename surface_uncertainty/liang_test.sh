@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-CUDA_VISIBLE_DEVICES=0,1
+CUDA_VISIBLE_DEVICES=4,5,6,7
 
 set -x
 NGPUS=$1

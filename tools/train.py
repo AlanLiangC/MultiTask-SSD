@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default='./cfgs/kitti_models/PAGNet.yaml', help='specify the config for training')
+    parser.add_argument('--cfg_file', type=str, default='./cfgs/kitti_models/IA-SSD_SF.yaml', help='specify the config for training')
     # parser.add_argument('--cfg_file', type=str, default='./cfgs/nuscenes_models/MLT_SSD.yaml', help='specify the config for training')
 
 
@@ -146,8 +146,8 @@ def main():
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
     if dist_train:
         model = nn.parallel.DistributedDataParallel(model, 
-                                                    device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()],
-                                                    find_unused_parameters=True)
+                                                    device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
+                                                    # find_unused_parameters=True)
     logger.info(model)
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f'Total number of params: {n_parameters}')
@@ -208,6 +208,6 @@ def main():
 
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVIDES"] = "1"
-    torch.cuda.set_device(1)
+    # os.environ["CUDA_VISIBLE_DEVIDES"] = "1"
+    # torch.cuda.set_device(1)
     main()

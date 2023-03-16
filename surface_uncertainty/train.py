@@ -247,6 +247,6 @@ def main():
 
 
 if __name__ == '__main__':
-    # os.environ["CUDA_VISIBLE_DEVIDES"] = "7"
-    # torch.cuda.set_device(7)
+    # os.environ["CUDA_VISIBLE_DEVIDES"] = "1"
+    # torch.cuda.set_device(1)
     main()
