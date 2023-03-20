@@ -76,8 +76,8 @@ class KittiDataset(DatasetTemplate):
         img_file = self.root_split_path / 'image_2' / ('%s.png' % idx)
         assert img_file.exists()
         image = io.imread(img_file)
-        image = image.astype(np.float32)
-        image /= 255.0
+        # image = image.astype(np.float32)
+        # image /= 255.0
         return image
 
     def get_image_shape(self, idx):

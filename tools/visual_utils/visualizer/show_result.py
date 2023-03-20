@@ -278,7 +278,7 @@ def show_multi_modality_result(img,
         mmcv.imshow(show_img, win_name='project_bbox3d_img', wait_time=0)
 
     if img is not None:
-        img = np.uint8(img * 255)
+        # img = np.uint8(img * 255)
         mmcv.imwrite(img, osp.join(result_path, f'{filename}_img.png'))
 
     if gt_bboxes is not None:
