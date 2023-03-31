@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 import numpy as np
-
+from pathlib import Path
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 from torch.autograd import Variable
 from torch.nn import Parameter, Softmax
@@ -155,9 +155,9 @@ class Surface_PW_feature(nn.Module):
 
         result = torch.cat([surface_feature, pw_feature], dim=-1)
 
-        # batch_dict['encoder_xyz'] = encoder_xyz
-        # batch_dict['encoder_coords'] = encoder_coords
-        # batch_dict['sa_ins_preds'] = sa_ins_preds
+        batch_dict['encoder_xyz'] = encoder_xyz
+        batch_dict['encoder_coords'] = encoder_coords
+        batch_dict['sa_ins_preds'] = sa_ins_preds
         # batch_dict['pw_feature'] = pw_feature
         # batch_dict['surface_feature'] = surface_feature
         batch_dict['soc_feature'] = result
@@ -498,12 +498,46 @@ class Generate_center(nn.Module):
 
 
         disp_dict.update({
-            # 'pos_mask': pos_mask,
+            'pos_mask': pos_mask,
             'lattent_loss': lattent_loss.item(),
             'lattent_loss2': lattent_loss2.item(),
         })
 
         return point_loss, tb_dict, disp_dict
+
+    def save_vis_points(self, batch_dict, output_dir):
+
+        self.forward_ret_dict = self.assign_targets(batch_dict)
+        pos_mask, _ = self.generate_center_ness_mask()
+
+        vs_points = []
+        points = batch_dict['points'][:,:4]
+        batch_mask = batch_dict['points'][:,0] == 0
+        stds = batch_dict['stds']
+        batch_points = points[batch_mask]
+
+        vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
+
+
+        _, topk = torch.topk(-stds,4096,dim = 1)
+        # stds = (stds/stds.max()).clamp(0,1)
+        sa_points_wh_label = torch.cat([batch_dict['encoder_xyz'][-1], stds.unsqueeze(dim = -1)],dim=-1)
+        
+        vs_points.append(sa_points_wh_label[0,...])
+
+        batch_mask = batch_dict['encoder_coords'][-1][:,:,0] == 0
+        vs_points.append(sa_points_wh_label.view(-1,4)[pos_mask & batch_mask.view(-1)])
+
+        vs_points.append(sa_points_wh_label[0,...][topk[0,...]])
+
+        save_name = ['points','heat_map','instance_map','centain_points']
+
+        file_name = batch_dict['frame_id']
+        output_path = os.path.join(output_dir,file_name[0])
+        os.makedirs(output_path, mode=0o777, exist_ok=True)
+
+        for i in range(len(save_name)):
+            np.savetxt(os.path.join(output_path,'{}.txt'.format(save_name[i])) , vs_points[i].detach().cpu().numpy())
 
 
     def forward(self, batch_dict, **kwargs):
@@ -533,33 +567,6 @@ class Generate_center(nn.Module):
 
             loss, tb_dict, disp_dict = self.get_training_loss()
 
-
-            # vs_points = []
-            # points = batch_dict['points'][:,:4]
-            # batch_mask = batch_dict['points'][:,0] == 1
-            # batch_points = points[batch_mask]
-
-            # vs_points.append(torch.cat([batch_points[:,1:4],batch_dict['fake_labels'][batch_mask].view(-1,1)], dim = -1))
-
-
-            # stds = torch.sum(logvarx.mul(0.5).exp_(),dim = -1)
-
-            # _, topk = torch.topk(-stds,4096,dim = 1)
-            # # stds = (stds/stds.max()).clamp(0,1)
-            # sa_points_wh_label = torch.cat([batch_dict['encoder_xyz'][-1], stds.unsqueeze(dim = -1)],dim=-1)
-            
-            # vs_points.append(sa_points_wh_label[1,...])
-
-            # pos_mask = disp_dict['pos_mask']
-            # batch_mask = batch_dict['encoder_coords'][-1][:,:,0] == 1
-            # vs_points.append(sa_points_wh_label.view(-1,4)[pos_mask & batch_mask.view(-1)])
-
-            # vs_points.append(sa_points_wh_label[1,...][topk[1,...]])
-
-            # save_name = ['points','heat_map','instance_map','centain_points']
-
-            # for i in range(len(save_name)):
-            #     np.savetxt('../vspoints/kitti/{}.txt'.format(save_name[i]), vs_points[i].detach().cpu().numpy())
             return loss, tb_dict, disp_dict
         
         else:
@@ -569,6 +576,12 @@ class Generate_center(nn.Module):
             batch_dict.update({
                 'stds': stds
             })
+
+            ######################################
+            save_path = Path(os.path.join('.','SPSNet_vis_V3'))
+            save_path.mkdir(parents=True, exist_ok=True)
+            self.save_vis_points(batch_dict,save_path)
+            ######################################
 
             return batch_dict
         

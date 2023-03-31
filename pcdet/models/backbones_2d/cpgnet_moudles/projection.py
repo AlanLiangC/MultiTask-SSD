@@ -10,10 +10,26 @@ import math
 import torch
 import torch.nn as nn
 from torch_scatter import scatter_max
-from torch_scatter import scatter_mean
+# from torch_scatter import scatter_mean
 
-from .common import arctan2
 
+def arctan2(x1, x2):
+    x1_zero = x1 == 0
+    x2_zero = x2 == 0
+    x2_neg = x2 < 0
+
+    # to prevent `nan` in output of `torch.arctan`.
+    # we expect arctan(0/0) to be 0, and arctan(0/any) happens to be 0.
+    x2 = x2 + (x1_zero & x2_zero)
+    phi = torch.arctan(x1/x2)
+
+    add_pi = ((x1 > 0) & x2_neg) | (x1_zero & x2_neg)
+    neg_pi = (x1 < 0) & x2_neg
+
+    phi += add_pi * math.pi
+    phi -= neg_pi * math.pi
+
+    return phi
 
 class Projection:
     """P2G and G2P                 
@@ -30,15 +46,16 @@ class Projection:
         range_shape: with shape :math:`(2, )`, that contain (h, w)
     """
 
-    def __init__(self, pc_range, pc_fov, bev_shape, range_shape):
+    def __init__(self, pc_range, pc_fov = None, bev_shape = None, range_shape = None):
         super(Projection, self).__init__()
         self.pc_range = pc_range
         self.pc_fov = pc_fov
 
         x_min, y_min, z_min, x_max, y_max, z_max = pc_range
         self.pc_bev_range = [x_min, y_min, x_max, y_max]
-        v_down, v_up, h_left, h_right = pc_fov
-        self.pc_vertical_fov = [v_down, v_up]
+        if pc_fov is not None:
+            v_down, v_up, h_left, h_right = pc_fov
+            self.pc_vertical_fov = [v_down, v_up]
         
         self.bev_shape = bev_shape
         self.range_shape = range_shape
@@ -138,10 +155,10 @@ class Projection:
 
         grid_coord_flatten = n * (h_grid * w_grid) + v_floor * w_grid + u_floor
 
-        grid_map, _ = scatter_max(points, grid_coord_flatten, 0, None, None)  # P_reduce * D 
-        grid_map = torch.cat([grid_map, grid_map.new_zeros([batch_size * h_grid * w_grid - grid_map.shape[0], feature_dim])])
+        grid_map, _ = scatter_max(points, grid_coord_flatten.long(), 0, None, None)  # P_reduce * D 
+        grid_map = torch.cat([grid_map, grid_map.new_zeros([int(batch_size * h_grid * w_grid - grid_map.shape[0]), feature_dim])])
 
-        return grid_map.view(batch_size, h_grid, w_grid, feature_dim).permute(0, 3, 1, 2).contiguous()
+        return grid_map.view(batch_size, int(h_grid), int(w_grid), feature_dim).permute(0, 3, 1, 2).contiguous()
 
     def _gather(self, grid_map, grid_coord, grid_shape):
         """

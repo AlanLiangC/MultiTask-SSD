@@ -4,7 +4,8 @@ import torch.nn.functional as F
 
 from .common import CBN2d
 from .fcn import DualDownSamplingBlock
-
+# from visdom import Visdom
+# viz = Visdom(server='http://127.0.0.1', port=8097)
 
 class AttentionFeaturePyramidFusionV2(nn.Module):
 
@@ -54,14 +55,28 @@ class CPGFCNV2(nn.Module):
         Param:
             inputs: with shape of :math:`(N,C,H,W)`, where N is batch size
         """
+        layer_idx = 0
+        encoding_features = {}
         encoder_outputs = [inputs]
+        # viz.image(inputs[0,0,...].clamp(0,1), opts={"title": 'input'})
         for layer in self.encoder:
-            encoder_outputs.append(
-                layer(encoder_outputs[-1])
-            )
+            layer_outputs = layer(encoder_outputs[-1])
+            encoder_outputs.append(layer_outputs)
+            encoding_features.update({
+                f'e{layer_idx}': layer_outputs
+            })
+            # viz.image(layer_outputs[0,0,...].clamp(0,1), opts={"title": f'e{layer_idx}'})
+            layer_idx += 1
 
         outputs = encoder_outputs[-1]
+        layer_idx = 0
         for layer, inputs_lower in zip(self.decoder, encoder_outputs[: len(self.decoder)][::-1]):
             outputs = layer(inputs_lower, outputs)
+            encoding_features.update({
+                f'd{layer_idx}': outputs
+            })
+            # viz.image(outputs[0,0,...].clamp(0,1), opts={"title": f'd{layer_idx}'})
+            layer_idx += 1
 
-        return outputs
+        return outputs, encoding_features
+    

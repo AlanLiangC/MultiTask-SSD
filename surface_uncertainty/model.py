@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 import numpy as np
+from pathlib import Path
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 from torch.autograd import Variable
@@ -578,7 +580,9 @@ class Generate_center(nn.Module):
             })
 
             ######################################
-            self.save_vis_points(batch_dict,'./SPSNet_vis')
+            # save_path = Path(os.path.join('.','SPSNet_vis'))
+            # save_path.mkdir(parents=True, exist_ok=True)
+            # self.save_vis_points(batch_dict,save_path)
             ######################################
 
             return batch_dict

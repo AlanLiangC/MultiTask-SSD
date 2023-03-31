@@ -1,14 +1,19 @@
 # from pcdet.models.backbones_2d import convmlp
 import torch
 import torch.nn as nn
-# from visdom import Visdom
+from functools import partial
+import numpy as np
+from .cpgnet_moudles import CBN2d
+from .cpgnet_moudles.fcn import DualDownSamplingBlock
+from .cpgnet_moudles.fcnv2 import AttentionFeaturePyramidFusionV2
+from . import AL_2D
 
-# viz = Visdom(server='http://127.0.0.1', port=8097)
+norm_fn = partial(nn.BatchNorm2d, eps=1e-3, momentum=0.01)
 
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, norm_fn=nn.BatchNorm2d, downsample=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
         super(BasicBlock, self).__init__()
 
         assert norm_fn is not None
@@ -43,7 +48,7 @@ class BasicBlock_CP(nn.Module):
     def __init__(self, input_channels, out_channels, kernel_size, dilation, padding, stride = 1) -> None:
         super().__init__()
         self.act = nn.ReLU()
-        self.bn = nn.BatchNorm2d(out_channels)
+        self.bn = norm_fn(out_channels)
         self.conv = nn.Conv2d(in_channels=input_channels,
                                 out_channels=out_channels,
                                 kernel_size=kernel_size,
@@ -55,7 +60,7 @@ class BasicBlock_CP(nn.Module):
         
 
 class EncBlock(nn.Module):
-    def __init__(self,input_channels) -> None:
+    def __init__(self,input_channels, range_view = False) -> None:
         super().__init__()
         self.input_channels = input_channels
         self.output_channels = int(input_channels * 2)
@@ -93,7 +98,10 @@ class EncBlock(nn.Module):
                                 dilation=1,
                                 padding=0,
                                 stride=1)
-        self.pool = nn.AvgPool2d(kernel_size=(2,2),stride=2)
+        if range_view:
+            self.pool = nn.AvgPool2d(kernel_size=(1,2),stride=(1,2))
+        else:
+            self.pool = nn.AvgPool2d(kernel_size=(2,2),stride=2)
 
     def forward(self,x):
         input_data = x
@@ -110,33 +118,32 @@ class EncBlock(nn.Module):
 
         output = self.pool(output) # [4, 128, 256, 256]
 
-        # viz.image(input_data[0,1,...].clamp(0,1), opts={'title': 'input_data'})
-        # viz.image(output_1[0,1,...].clamp(0,1), opts={'title': 'output_1'})
-        # viz.image(output_2[0,1,...].clamp(0,1), opts={'title': 'output_2'})
-        # viz.image(output_3[0,1,...].clamp(0,1), opts={'title': 'output_3'})
-
-        # viz.image(output_123_1[0,1,...].clamp(0,1), opts={'title': 'output_123_1'})
-        # viz.image(output_1_1[0,1,...].clamp(0,1), opts={'title': 'output_1_1'})
-        # viz.image((output_123_1 + output_1_1)[0,1,...].clamp(0,1), opts={'title': 'output'})
-        # viz.image(output[0,1,...].clamp(0,1), opts={'title': 'output'})
-
-
         return output
 
 class DecBlock(nn.Module):
-    def __init__(self, input_channels) -> None:
+    def __init__(self, input_channels, range_view = False) -> None:
         super().__init__()
         self.input_channels = input_channels
         self.output_channels = input_channels // 2
 
-        self.transconv = nn.Sequential(nn.ConvTranspose2d(in_channels = self.input_channels,
-                                            out_channels=self.output_channels,
-                                            kernel_size=(3,3),
-                                            padding=1,
-                                            stride=2,
-                                            output_padding=1),
-                                        nn.BatchNorm2d(self.output_channels),
-                                        nn.ReLU())
+        if range_view:
+            self.transconv = nn.Sequential(nn.ConvTranspose2d(in_channels = self.input_channels,
+                                                out_channels=self.output_channels,
+                                                kernel_size=(3,3),
+                                                padding=1,
+                                                stride=(1,2),
+                                                output_padding=(0,1)),
+                                            norm_fn(self.output_channels),
+                                            nn.ReLU())
+        else:
+            self.transconv = nn.Sequential(nn.ConvTranspose2d(in_channels = self.input_channels,
+                                                out_channels=self.output_channels,
+                                                kernel_size=(3,3),
+                                                padding=1,
+                                                stride=2,
+                                                output_padding=1),
+                                            norm_fn(self.output_channels),
+                                            nn.ReLU())
 
         self.conv1 = BasicBlock_CP(input_channels=self.output_channels,
                                 out_channels=self.output_channels,
@@ -184,24 +191,20 @@ class DecBlock(nn.Module):
         
 
 class CP_Unet(nn.Module): # layers_num = 4 in our project
-    def __init__(self, input_channels, layers_num, output_channels = None, unet = True) -> None:
+    def __init__(self, input_channels, layers_num, output_channels, range_view = False):
         super().__init__()
         self.layers = [int(input_channels * 2**i) for i in range(layers_num)]
-        self.unet = unet
 
         self.pre_conv = BasicBlock(inplanes=input_channels, planes=input_channels)
+        self.out_conv = nn.Conv2d(input_channels, output_channels, kernel_size=1, stride=1, padding=0)
         self.encode_blocks = nn.ModuleList()
         self.decode_blocks = nn.ModuleList()
         self.basic_blocks = nn.ModuleList()
-        if unet:
-            self.out_conv = nn.Conv2d(input_channels, output_channels, kernel_size=1, stride=1, padding=0)
-
 
         for i in range(len(self.layers) - 1):
-            self.encode_blocks.append(EncBlock(input_channels=self.layers[i]))
-            if unet or i == 0:
-                self.decode_blocks.append(DecBlock(input_channels=self.layers[0-1-i]))
-                self.basic_blocks.append(BasicBlock(inplanes=self.layers[-1-i], planes=self.layers[-2-i]))
+            self.encode_blocks.append(EncBlock(input_channels=self.layers[i], range_view = range_view))
+            self.decode_blocks.append(DecBlock(input_channels=self.layers[0-1-i], range_view = range_view))
+            self.basic_blocks.append(BasicBlock(inplanes=self.layers[-1-i], planes=self.layers[-2-i]))
     
     def forward(self,x):
         e0 = self.pre_conv(x) # [4, 16, 512, 512]
@@ -210,29 +213,19 @@ class CP_Unet(nn.Module): # layers_num = 4 in our project
         e2 = self.encode_blocks[1](e1) # [4, 64, 128, 128]
         e3 = self.encode_blocks[2](e2) # [4, 128, 64, 64]
 
-        # viz.image(e1[0,1,...].clamp(0,1), opts={'title': 'e1'})
-        # viz.image(e2[0,1,...].clamp(0,1), opts={'title': 'e2'})
-        # viz.image(e3[0,1,...].clamp(0,1), opts={'title': 'e3'})
-        
-
         d0 = self.decode_blocks[0](e3) # [4, 64, 128, 128]
-        # viz.image(d0[0,1,...].clamp(0,1), opts={'title': 'd0'})
         d0 = torch.cat([e2, d0], dim = 1) # [4, 128, 128, 128]
         d0 = self.basic_blocks[0](d0) # [4, 64, 128, 128]
-        # viz.image(d0[0,1,...].clamp(0,1), opts={'title': 'd0'})
-        out = d0
 
-        if self.unet:
+        d1 = self.decode_blocks[1](d0) # [4, 32, 256, 256]
+        d1 = torch.cat([e1, d1], dim = 1) # [4, 64, 256, 256]
+        d1 = self.basic_blocks[1](d1) # [4, 32, 256, 256]
 
-            d1 = self.decode_blocks[1](d0) # [4, 32, 256, 256]
-            d1 = torch.cat([e1, d1], dim = 1) # [4, 64, 256, 256]
-            d1 = self.basic_blocks[1](d1) # [4, 32, 256, 256]
+        d2 = self.decode_blocks[2](d1) # [4, 16, 512, 512]
+        d2 = torch.cat([e0, d2], dim = 1) # [4, 32, 512, 512]
+        d2 = self.basic_blocks[2](d2) # [4, 16, 512, 512]
 
-            d2 = self.decode_blocks[2](d1) # [4, 16, 512, 512]
-            d2 = torch.cat([e0, d2], dim = 1) # [4, 32, 512, 512]
-            d2 = self.basic_blocks[2](d2) # [4, 16, 512, 512]
-
-            out = self.out_conv(d2)
+        out = self.out_conv(d2)
 
         out_dict = {}
         out_dict.update({
@@ -242,18 +235,141 @@ class CP_Unet(nn.Module): # layers_num = 4 in our project
             'd0': d0
         })
 
-        
-
         return out, out_dict
 
 
+class DetEncoder(nn.Module):
+    def __init__(self, model_cfg, input_channels):
+        super().__init__()
+        self.model_cfg = model_cfg
+        assert len(self.model_cfg.LAYER_NUMS) == len(self.model_cfg.LAYER_STRIDES) == len(self.model_cfg.NUM_FILTERS)
+        assert len(self.model_cfg.LAYER_NUMS) == len(self.model_cfg.UPSAMPLE_STRIDES), 'must have upsample process'
 
+        layer_nums = self.model_cfg.LAYER_NUMS
+        layer_strides = self.model_cfg.LAYER_STRIDES
+        num_filters = self.model_cfg.NUM_FILTERS
+        num_upsample_filters = self.model_cfg.NUM_UPSAMPLE_FILTERS
+        upsample_strides = self.model_cfg.UPSAMPLE_STRIDES
+
+        num_levels = len(layer_nums) # normally is 2
+        c_in_list = [input_channels, *num_filters[:-1]]
+        self.blocks = nn.ModuleList()
+        self.deblocks = nn.ModuleList()
+
+        for idx in range(num_levels):
+            # downsample
+            cur_c_out = num_filters[idx]
+            cur_c_in = c_in_list[idx]
+            cur_stride = layer_strides[idx]
+
+            cur_layers = [
+                nn.Conv2d(cur_c_in, cur_c_out, 3,
+                    stride=cur_stride, padding=1, bias=False),
+                norm_fn(cur_c_out),
+                nn.ReLU()
+            ]
+            for _ in range(layer_nums[idx]):
+                cur_layers.extend([
+                    nn.Conv2d(cur_c_out, cur_c_out, 3,
+                              padding=1, bias=False),
+                    norm_fn(cur_c_out),
+                    nn.ReLU()
+                ])
+            self.blocks.append(nn.Sequential(*cur_layers))
+
+            # upsample
+            cur_up_stride = upsample_strides[idx]
+            cur_c_up_out= num_upsample_filters[idx]
+            if cur_up_stride > 1:
+                self.deblocks.append(nn.Sequential(
+                    nn.ConvTranspose2d(cur_c_out, cur_c_up_out, 
+                        cur_up_stride,stride=cur_up_stride,bias=False),
+                    norm_fn(cur_c_up_out),
+                    nn.ReLU(),
+                ))
+            else:
+                cur_up_stride = np.round(1 / cur_up_stride).astype(np.int)
+                self.deblocks.append(nn.Sequential(
+                    nn.Conv2d(cur_c_out, cur_c_up_out, cur_up_stride,
+                        stride=cur_up_stride, bias=False),
+                    norm_fn(cur_c_up_out),
+                    nn.ReLU(),
+                ))
+        c_in = sum(num_upsample_filters)
+        self.num_bev_features = c_in
+
+    def forward(self, x, **kwags):
+        ups = []
+        encoding_features = []
+        encoding_features.append(x)
+        for i in range(len(self.blocks)):
+            x = self.blocks[i](x)
+            encoding_features.append(x)
+            ups.append(self.deblocks[i](x))
+        x = torch.cat(ups, dim=1)
+    
+        return x, encoding_features
+
+
+
+class DetDecoder(nn.Module):
+
+    def __init__(self, 
+                 in_channels=64, 
+                 encoder_channels=[32, 64, 128, 128], 
+                 stride=[2, 2, 2, 2],
+                 decoder_channels=[96, 64, 64, 64]):
+        super(DetDecoder, self).__init__()
+        assert len(encoder_channels) == len(stride)
+        assert len(decoder_channels) <= len(encoder_channels)
+
+
+        self.decoder = nn.ModuleList()
+        for lower_c, higher_c, out_c in zip(([in_channels]+encoder_channels)[:len(decoder_channels)][::-1],
+                                             encoder_channels[-1:] + decoder_channels[:-1],
+                                             decoder_channels):
+            self.decoder.append(AttentionFeaturePyramidFusionV2(lower_c, higher_c, out_c))
+
+    def forward(self, encoder_outputs):
+        """
+        Param:
+            inputs: with shape of :math:`(N,C,H,W)`, where N is batch size
+        """
+        outputs = encoder_outputs[-1]
+        for layer, inputs_lower in zip(self.decoder, encoder_outputs[: len(self.decoder)][::-1]):
+            outputs = layer(inputs_lower, outputs)
+            # viz.image(outputs[0,0,...].clamp(0,1), opts={"title": f'd{layer_idx}'})
+
+        return outputs
+
+
+
+class AL_Unet(nn.Module):
+    def __init__(self,model_config):
+        super().__init__()
+        self.model_config = model_config
+        self.de_config = model_config.DETENCODER
+        self.dd_config = model_config.DETDECODER
+
+        self.det_encoder = DetEncoder(self.de_config, self.de_config.INPUT_CHANNELS)
+        self.det_decoder = getattr(AL_2D, self.dd_config['NAME'])(**self.dd_config['ARGS'])
+        # self.det_decoder = DetDecoder(self.dd_config)
+        
+    # backbone_3d.bev_2D.det_decoder.decoder.0.cbn_higher.conv.weight
+    def forward(self, x):
+        det_feature_map, encoding_features = self.det_encoder(x)
+        bev_seg_feature_map =self.det_decoder(encoding_features)
+
+        return det_feature_map, bev_seg_feature_map
+
+
+
+
+
+
+  
 
         
-
-        
-
-
 
         
 

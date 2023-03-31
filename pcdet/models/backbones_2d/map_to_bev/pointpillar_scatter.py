@@ -102,7 +102,7 @@ class Sparse2BEV(nn.Module):
 
         self.model_cfg = model_cfg
         self.num_bev_features = self.model_cfg.NUM_BEV_FEATURES
-        self.sparse_shape = grid_size[[1, 0]]
+        self.sparse_shape = grid_size[[1,0]]
 
     def forward(self, batch_dict, **kwargs):
         pillar_features = batch_dict['pillar_features']

@@ -93,26 +93,14 @@ def draw_3d(fig_id):
     #ax3.contour(X,Y,Z, zdim='z',offset=-2，cmap='rainbow)   #等高线图，要设置offset，为Z的最小值
     plt.show()
 
-def draw_scatter(fig_id,x,y,color = 'r',alpha = 1):
+def draw_scatter(fig_id,x,y,std = None,cmap = 'rainbow',color = 'r'):
 
     fig = plt.figure(fig_id)  #定义新的三维坐标轴
 
-    # 定义数据
-    # x = np.random.rand(10)  # 取出10个随机数
-    # y = x + x ** 2 - 10  # 用自定义关系确定y的值
-    # y = np.random.rand(10)
-
-    # 绘图
-    # 1. 确定画布
-    # 2. 绘图
-    plt.scatter(x,  # 横坐标
-            y,  # 纵坐标
-            c=color,
-            alpha = alpha)  # 标签 即为点代表的意思
-
-      # 显示所绘图形
-
-
+    if hasattr(std, 'shape'):
+        plt.scatter(x, y, c=std, cmap=cmap) 
+    else:
+        plt.scatter(x, y, c=color) 
 
 if __name__ == "__main__":
 
@@ -120,24 +108,20 @@ if __name__ == "__main__":
     os.environ['CUDA_VISIBLE_DEVICES']='1'
 
     data = torch.rand(500,2)
-    draw_scatter(0,data.numpy()[:,0],data.numpy()[:,1],alpha = 0.5)
+    draw_scatter(0,data.numpy()[:,0],data.numpy()[:,1])
 
     data1 = torch.randn(100,2)+0.5
-    draw_scatter(0,data1.numpy()[:,0],data1.numpy()[:,1],color='blue',alpha = 1)
+    draw_scatter(0,data1.numpy()[:,0],data1.numpy()[:,1],color='blue')
 
     plt.savefig('./data.png',dpi = 600)
 
     data = torch.cat([data, data1], dim = 0)
 
-    # mask1 = (data[:,0] > 0) & (data[:,1] > 0)
-    # mask = (data[:,0] < 1) & (data[:,1] < 1)
-    # data = data[mask & mask1]
-
     gt = torch.zeros_like(data)
 
     model = SPSNet()
     
-    iters = 300
+    iters = 2000
 
     opti = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.001)
 
@@ -164,14 +148,15 @@ if __name__ == "__main__":
 
             v = torch.sum(logvarx.mul(0.5).exp_(),dim = -1).view(-1,1)
 
-            _,topk = torch.topk(-v, 100,dim=0)
+            value,topk = torch.topk(-v, 100,dim=0)
             topk = topk.squeeze()
 
-            top_data_1 = data[topk[topk>500]]
-            draw_scatter(1,top_data_1.cpu().numpy()[:,0],top_data_1.cpu().numpy()[:,1],color='blue')
+            top_data = data[topk]
+            std = value.squeeze()
 
-            top_data_2 = data[topk[topk<=500]]
-            draw_scatter(1,top_data_2.cpu().numpy()[:,0],top_data_2.cpu().numpy()[:,1])
+
+            draw_scatter(1,top_data.cpu().numpy()[:,0],top_data.cpu().numpy()[:,1],std=std.detach().cpu().numpy())
+
 
             print(topk)
 

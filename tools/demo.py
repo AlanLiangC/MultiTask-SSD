@@ -235,15 +235,26 @@ def mmdet_vis():
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
     model.cuda()
     model.eval()
-    for i in range(10):
+
+    ############################################################
+    for item in range(500):
+    ############################################################
         with torch.no_grad():
 
-            data_dict = demo_dataset.vis_mmdet_item(args.item + i)
+            data_dict = demo_dataset.vis_mmdet_item(item)
+            if isinstance(data_dict['gt_boxes'], np.ndarray):
+                gt_boxes = data_dict['gt_boxes']
+                if gt_boxes.shape[0] < 10:
+                    continue
+
+            logger.info(f"Get one in {item}! There are {gt_boxes.shape[0]} objects.")
+
             data_dict = demo_dataset.collate_batch([data_dict])
             load_data_to_gpu(data_dict)
             pred_dicts, _ = model.forward(data_dict)
 
             points = data_dict['points'][:, 1:].cpu().numpy()
+            
             points = Coord3DMode.convert_point(points, Coord3DMode.LIDAR,
                                                 Coord3DMode.DEPTH)
 
